@@ -1,0 +1,18 @@
+:root, html {
+    height: 100dvh;
+}
+
+body {
+    background: #202020;
+    color: #e0e0e0;
+    height: 100%;
+}
+
+#editor-wrapper {
+    width: 50%;
+    height: 100dvh;
+}
+
+#editor {
+    height: 100%;
+}
