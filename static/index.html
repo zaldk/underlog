@@ -5,15 +5,19 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Underlog</title>
         <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
+
+        <!--<link rel="stylesheet" href="prismjs/prismjs.css">-->
+        <!--<script src="prismjs/prismjs.js" data-manual></script>-->
+
+        <link rel="stylesheet" href="highlightjs/highlightjs.css">
+        <link rel="stylesheet" href="highlightjs/tokyo-night-dark.css">
+        <script src="highlightjs/highlightjs.js"></script>
+
         <link rel="stylesheet" type="text/css" href="reset.css" />
         <link rel="stylesheet" type="text/css" href="style.css" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markdown-text-editor/dist/markdown-text-editor.css">
-        <script src="https://cdn.jsdelivr.net/npm/markdown-text-editor/dist/markdown-text-editor.js"></script>
-        <script src="script.js" defer></script>
+        <script src="script.js" type="module"></script>
     </head>
     <body>
-        <div id="editor-wrapper">
-            <textarea id="editor" class="editor-container"></textarea>
-        </div>
+        <div id="editor"></div>
     </body>
 </html>

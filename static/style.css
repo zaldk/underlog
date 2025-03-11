@@ -1,18 +1,22 @@
-:root, html {
-    height: 100dvh;
+html, body {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
 }
 
 body {
     background: #202020;
     color: #e0e0e0;
-    height: 100%;
-}
-
-#editor-wrapper {
-    width: 50%;
-    height: 100dvh;
 }
 
 #editor {
+    width: 100%;
     height: 100%;
+    background: #101010;
+    font-family: monospace;
 }
