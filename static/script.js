@@ -17,47 +17,11 @@ jar.onUpdate(code => { globalThis.editor_content = code })
 
 /*================================================================================*/
 
-import { parseReport } from './parser.js'
+import * as db from './db.js'
+import * as parser from './parser.js'
 
-console.dir(JSON.stringify(parseReport(get_test_content()).slice(-5), null, 4))
-
-// const TEXT = `# Heading
-//
-// a paragraph about something important,
-// that you will never read,
-// much less comprehend.
-//
-// ## Lists
-//
-// - Unordered List Item 1
-//     - Unordered List Item 1.1
-// - Unordered List Item 2
-// - Unordered List Item 3
-//
-// 1. Ordered List Item 1
-// 1. Ordered List Item 2
-//     1. Ordered List Item 2.1
-// 1. Ordered List Item 3`;
-
-// const Token = {
-//     Heading: "HEADING",
-//     List: "LIST",
-//     Paragraph: "PARAGRAPH",
-//     Image: "IMAGE",
-//     Table: "TABLE",
-//     Code: "CODE",
-// };
-
-// console.log(TEXT);
-//
-// console.log(JSON.stringify(
-//     TEXT.split('\n\n')
-//         .map(para => para.split('\n'))
-// , null, 4));
-
-/*================================================================================*/
-
-//console.log(get_default_content())
+console.log(await db.get_all_image_names())
+// console.dir(JSON.stringify(parser.parseReport(get_test_content()), null, 4))
 
 function get_test_content() {
     // {{{

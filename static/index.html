@@ -18,6 +18,25 @@
         <script src="script.js" type="module"></script>
     </head>
     <body>
-        <div id="editor"></div>
+        <div id="files-container" class="body-container">
+            <h1>Upload Image</h1>
+            <form id="uploadForm">
+                <input type="file" id="fileInput" accept="image/*" required>
+                <button type="submit">Upload</button>
+            </form>
+            <hr>
+            <h2>Retrieve Image</h2>
+            <form id="retrieveForm">
+                <select id="imageSelect" required>
+                    <option value="" disabled selected>Select an image</option>
+                </select>
+                <button type="submit">Retrieve</button>
+            </form>
+            <div id="imageContainer"></div>
+        </div>
+
+        <div id="editor-container" class="body-container">
+            <div id="editor"></div>
+        </div>
     </body>
 </html>
