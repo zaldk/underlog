@@ -237,3 +237,25 @@ pub fn convert(doc: String) -> Result(Svg, String) {
 `
     // }}}
 }
+
+// this code just nneds to run after page load, i tried normally, but it didnt work.
+// web fucking sucks. vibe coding it is.
+new Promise((resolve, _reject) => {
+    const tab_buttons = document.querySelectorAll('.tab_button');
+    const tab_contents = document.querySelectorAll('.tab_content');
+
+    tab_buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            const target_id = button.getAttribute('data-tab');
+
+            // Remove active class from all buttons and contents
+            tab_buttons.forEach(btn => btn.classList.remove('active'));
+            tab_contents.forEach(tab => tab.classList.remove('active'));
+
+            // Activate selected tab and button
+            button.classList.add('active');
+            document.getElementById(target_id).classList.add('active');
+        });
+    });
+    resolve();
+});

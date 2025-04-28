@@ -7,32 +7,25 @@ html, body {
     margin: 0;
     padding: 0;
     overflow: hidden;
+    font-family: sans-serif;
 }
 
 body {
     background: #202020;
     color: #e0e0e0;
-    position: relative;
+    display: flex;
+    flex-direction: row;
 }
 
-.body-container {
-    padding: 0.5rem;
+.body_container {
     background: #202020;
+    box-sizing: border-box;
 }
 
-#files-container {
-    position: absolute;
-    left: 50%;
+#editor_container {
     width: 50%;
     height: 100%;
-}
-#editor-container {
     background: #101010;
-    position: absolute;
-    left: 0%;
-    width: 50%;
-    height: 100%;
-    z-index: 10;
 }
 
 #editor {
@@ -40,8 +33,58 @@ body {
     height: 100%;
     background: #101010;
     font-family: monospace;
+    color: #e0e0e0;
+    padding: 1rem;
+    box-sizing: border-box;
 }
 
-input, select {
+#right_panel {
+    width: 50%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #202020;
+}
+
+#tab_bar {
+    display: flex;
     background: #303030;
+    border-bottom: 1px solid #444;
+}
+
+.tab_button {
+    flex: 1;
+    padding: 0.25rem;
+    background: #303030;
+    color: #e0e0e0;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    max-width: 6rem;
+}
+
+.tab_button.active {
+    background: #404040;
+}
+
+.tab_content {
+    display: none;
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.tab_content.active {
+    display: block;
+}
+
+input, select, button {
+    background: #303030;
+    color: #e0e0e0;
+    outline: inset 1px solid #444;
+    padding: 0.5rem;
+}
+
+select {
+    max-width: 10rem;
 }

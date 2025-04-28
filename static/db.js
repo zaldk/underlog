@@ -1,10 +1,10 @@
 /**
- * @typedef {Object} StoredImage
+ * @typedef {Object} stored_image
  * @property {string} name - The name of the image
  * @property {Blob} blob - The image data as a Blob
  */
 
-const DB_NAME = 'ImageDB';
+const DB_NAME = 'image_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'images';
 
@@ -22,14 +22,20 @@ export function open_database() {
                 db.createObjectStore(STORE_NAME, { keyPath: 'name' });
             }
         };
-        request.onsuccess = (event) => { resolve(event.target.result); };
-        request.onerror = (event) => { reject(event.target.error); };
+
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
     });
 }
 
 /**
  * Store an image in IndexedDB
- * @param {StoredImage} image
+ * @param {stored_image} image
  * @returns {Promise<void>}
  */
 export async function store_image(image) {
@@ -39,15 +45,20 @@ export async function store_image(image) {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.put(image);
 
-        request.onsuccess = () => { resolve(); };
-        request.onerror = (event) => { reject(event.target.error); };
+        request.onsuccess = () => {
+            resolve();
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
     });
 }
 
 /**
  * Retrieve an image by name from IndexedDB
  * @param {string} name
- * @returns {Promise<StoredImage|null>}
+ * @returns {Promise<stored_image|null>}
  */
 export async function get_image(name) {
     const db = await open_database();
@@ -56,14 +67,19 @@ export async function get_image(name) {
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(name);
 
-        request.onsuccess = (event) => { resolve(event.target.result || null); };
-        request.onerror = (event) => { reject(event.target.error); };
+        request.onsuccess = (event) => {
+            resolve(event.target.result || null);
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
     });
 }
 
 /**
  * Retrieve all image names from IndexedDB
- * @returns {Promise<string[]>} - A promise that resolves to an array of image names
+ * @returns {Promise<string[]>}
  */
 export async function get_all_image_names() {
     const db = await open_database();
@@ -85,12 +101,34 @@ export async function get_all_image_names() {
 }
 
 /**
+ * Delete an image by name from IndexedDB
+ * @param {string} name
+ * @returns {Promise<void>}
+ */
+export async function delete_image(name) {
+    const db = await open_database();
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.delete(name);
+
+        request.onsuccess = () => {
+            resolve();
+        };
+
+        request.onerror = (event) => {
+            reject(event.target.error);
+        };
+    });
+}
+
+/**
  * Populate the image select dropdown with all stored image names
  * @returns {Promise<void>}
  */
 export async function populate_image_select() {
-    const select = document.getElementById('imageSelect');
-    select.innerHTML = '<option value="" disabled selected>Select an image</option>'; // Reset options
+    const image_select = document.getElementById('image_select');
+    image_select.innerHTML = '<option value="" disabled selected>Select an image</option>';
 
     try {
         const names = await get_all_image_names();
@@ -98,65 +136,84 @@ export async function populate_image_select() {
             const option = document.createElement('option');
             option.value = name;
             option.textContent = name;
-            select.appendChild(option);
+            image_select.appendChild(option);
         });
     } catch (error) {
         console.error('Error populating image select:', error);
     }
 }
 
-// Event listeners for forms
-document.getElementById('uploadForm').addEventListener('submit', async (event) => {
-    event.preventDefault(); // Prevent form from submitting normally
+// Event listeners
+document.getElementById('upload_form').addEventListener('submit', async (event) => {
+    event.preventDefault();
 
-    const fileInput = document.getElementById('fileInput');
-    const file = fileInput.files[0];
+    const file_input = document.getElementById('file_input');
+    const file = file_input.files[0];
     if (!file) {
         console.error('Please select a file first.');
         return;
     }
 
-    const imageName = file.name;
+    const image_name = file.name;
 
     try {
-        await store_image({ name: imageName, blob: file });
+        await store_image({ name: image_name, blob: file });
         console.info('Image stored successfully!');
-        fileInput.value = ''; // Clear the file input
+        file_input.value = '';
         await populate_image_select();
     } catch (error) {
         console.error('Error storing image:', error);
     }
 });
 
-document.getElementById('retrieveForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-
-    const imageSelect = document.getElementById('imageSelect');
-    const imageName = imageSelect.value;
-    if (!imageName) {
+document.getElementById('image_select').addEventListener('change', async (event) => {
+    const image_select = event.target;
+    const image_name = image_select.value;
+    if (!image_name) {
         console.error('Please select an image.');
         return;
     }
 
     try {
-        const storedImage = await get_image(imageName);
-        const container = document.getElementById('imageContainer');
-        container.innerHTML = '';
+        const stored_image = await get_image(image_name);
+        const image_container = document.getElementById('image_container');
+        image_container.innerHTML = '';
 
-        if (storedImage) {
-            const url = URL.createObjectURL(storedImage.blob);
+        if (stored_image) {
+            const url = URL.createObjectURL(stored_image.blob);
             const img = document.createElement('img');
             img.src = url;
-            img.alt = storedImage.name;
+            img.alt = stored_image.name;
             img.style.maxWidth = '300px';
-            container.appendChild(img);
+            image_container.appendChild(img);
         } else {
-            container.textContent = 'Image not found.';
+            image_container.textContent = 'Image not found.';
         }
     } catch (error) {
         console.error('Error retrieving image:', error);
     }
 });
 
-// Populate the dropdown on page load
-window.addEventListener('DOMContentLoaded', populate_image_select);
+document.addEventListener('DOMContentLoaded', populate_image_select);
+
+document.getElementById('delete_btn').addEventListener('click', async () => {
+    const imageSelect = document.getElementById('image_select');
+    const imageName = imageSelect.value;
+    if (!imageName) {
+        console.error('Please select an image to delete.');
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete "${imageName}"?`)) {
+        return;
+    }
+
+    try {
+        await delete_image(imageName);
+        console.info(`Image "${imageName}" deleted.`);
+        await populate_image_select();
+        document.getElementById('image_container').innerHTML = '';
+    } catch (error) {
+        console.error('Error deleting image:', error);
+    }
+});

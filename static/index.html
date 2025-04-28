@@ -6,37 +6,44 @@
         <title>Underlog</title>
         <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🪵</text></svg>">
 
-        <!--<link rel="stylesheet" href="prismjs/prismjs.css">-->
-        <!--<script src="prismjs/prismjs.js" data-manual></script>-->
-
         <link rel="stylesheet" href="highlightjs/highlightjs.css">
         <link rel="stylesheet" href="highlightjs/tokyo-night-dark.css">
         <script src="highlightjs/highlightjs.js"></script>
 
         <link rel="stylesheet" type="text/css" href="reset.css" />
         <link rel="stylesheet" type="text/css" href="style.css" />
-        <script src="script.js" type="module"></script>
+        <script src="script.js" type="module" defer></script>
     </head>
     <body>
-        <div id="files-container" class="body-container">
-            <h1>Upload Image</h1>
-            <form id="uploadForm">
-                <input type="file" id="fileInput" accept="image/*" required>
-                <button type="submit">Upload</button>
-            </form>
-            <hr>
-            <h2>Retrieve Image</h2>
-            <form id="retrieveForm">
-                <select id="imageSelect" required>
-                    <option value="" disabled selected>Select an image</option>
-                </select>
-                <button type="submit">Retrieve</button>
-            </form>
-            <div id="imageContainer"></div>
+        <div id="editor_container" class="body_container">
+            <div id="editor"></div>
         </div>
 
-        <div id="editor-container" class="body-container">
-            <div id="editor"></div>
+        <div id="right_panel" class="body_container">
+            <div id="tab_bar">
+                <button class="tab_button" data-tab="result_tab">Result</button>
+                <button class="tab_button active" data-tab="upload_tab">Upload</button>
+            </div>
+
+            <div id="upload_tab" class="tab_content active">
+                <h1>Upload Image</h1>
+                <form id="upload_form">
+                    <input type="file" id="file_input" accept="image/*" required>
+                    <button type="submit">Upload</button>
+                </form>
+                <h2>Retrieve Image</h2>
+                <form id="retrieve_form">
+                    <select id="image_select" required>
+                        <option value="" disabled selected>Select an image</option>
+                    </select>
+                    <button type="button" id="delete_btn">Delete</button>
+                </form>
+                <div id="image_container"></div>
+            </div>
+
+            <div id="result_tab" class="tab_content">
+                <h1>Results will be here</h1>
+            </div>
         </div>
     </body>
 </html>
