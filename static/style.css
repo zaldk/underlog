@@ -78,6 +78,20 @@ body {
     display: block;
 }
 
+.rename_container {
+    display: none;
+    margin-top: 0.5rem;
+}
+
+.rename_container.visible {
+    display: block;
+}
+
+#result_tab {
+    display: grid;
+    gap: 1rem;
+}
+
 input, select, button {
     background: #303030;
     color: #e0e0e0;

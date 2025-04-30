@@ -1,8 +1,10 @@
 /**
- * A parser for report documents based on the given BNF.
+ * A tokenizer for report documents based on the given BNF.
  * Produces a JSON tree of nodes: { name, attributes, children }.
  * Does not use regular expressions.
  */
+
+import { Token } from './common.js'
 
 /**
  * @typedef {Object} Node
@@ -12,17 +14,17 @@
  */
 
 /**
- * Parse the entire report text into a list of Nodes.
+ * Tokenize the entire report text into a list of Nodes.
  * @param {string} text - The raw report document text.
  * @returns {Node[]} Array of top-level nodes in the report.
  */
-export function parseReport(text) {
+export function tokenizeReport(text) {
     const lines = text.split("\n");
-    const parser = new Parser(lines);
-    return parser.parse();
+    const tokenizer = new Tokenizer(lines);
+    return tokenizer.tokenize();
 }
 
-class Parser {
+class Tokenizer {
     constructor(lines) {
         this.lines = lines;
         this.pos = 0;
@@ -30,9 +32,9 @@ class Parser {
 
     /**
      * Process all lines and generate AST nodes.
-     * @returns {Node[]} Array of parsed nodes.
+     * @returns {Node[]} Array of tokenized nodes.
      */
-    parse() {
+    tokenize() {
         const nodes = [];
         while (this.pos < this.lines.length) {
             const line = this.lines[this.pos];
@@ -44,12 +46,12 @@ class Parser {
             /** @type {Node} */
             let node;
             switch (true) {
-                case this.isHeading(line):    node = this.parseHeading();   break;
-                case this.isImage(line):      node = this.parseImage();     break;
-                case this.isCodeBlock(line):  node = this.parseCodeBlock(); break;
-                case this.isTableStart(line): node = this.parseTable();     break;
-                case this.isListItem(line):   node = this.parseList();      break;
-                default:                      node = this.parseParagraph(); break;
+                case this.isHeading(line):    node = this.tokenizeHeading();   break;
+                case this.isImage(line):      node = this.tokenizeImage();     break;
+                case this.isCodeBlock(line):  node = this.tokenizeCodeBlock(); break;
+                case this.isTableStart(line): node = this.tokenizeTable();     break;
+                case this.isListItem(line):   node = this.tokenizeList();      break;
+                default:                      node = this.tokenizeParagraph(); break;
             }
 
             nodes.push(node);
@@ -67,12 +69,12 @@ class Parser {
     }
 
     /**
-     * Parse a heading line into a Node.
+     * Tokenize a heading line into a Node.
      * @returns {Node}
      */
-    parseHeading() {
+    tokenizeHeading() {
         const line = this.lines[this.pos++];
-        let name = 'heading';
+        let name = Token.heading;
         let level = 0;
 
         // Unnumbered headings (#@ or #%)
@@ -81,7 +83,7 @@ class Parser {
             return {
                 name,
                 attributes: { numbered: 'false', type: line.charAt(1) },
-                children: [{ name: 'text', attributes: { content: text }, children: [] }]
+                children: [{ name: Token.text, attributes: { content: text }, children: [] }]
             };
         }
 
@@ -92,7 +94,7 @@ class Parser {
         return {
             name,
             attributes: { numbered: 'true', level: level.toString() },
-            children: [{ name: 'text', attributes: { content: text }, children: [] }]
+            children: [{ name: Token.text, attributes: { content: text }, children: [] }]
         };
     }
 
@@ -106,10 +108,10 @@ class Parser {
     }
 
     /**
-     * Parse an image declaration into a Node.
+     * Tokenize an image declaration into a Node.
      * @returns {Node}
      */
-    parseImage() {
+    tokenizeImage() {
         const line = this.lines[this.pos++];
         const start = 'image::'.length;
         const brackOpen = line.indexOf('[', start);
@@ -119,7 +121,7 @@ class Parser {
             ? line.substring(brackOpen + 1, brackClose)
             : '';
         return {
-            name: 'image',
+            name: Token.image,
             attributes: { path, caption },
             children: []
         };
@@ -135,10 +137,10 @@ class Parser {
     }
 
     /**
-     * Parse a fenced code block into a Node.
+     * Tokenize a fenced code block into a Node.
      * @returns {Node}
      */
-    parseCodeBlock() {
+    tokenizeCodeBlock() {
         const startLine = this.lines[this.pos++];
         const lang = startLine.length > 3
             ? startLine.substring(3).trim()
@@ -151,7 +153,7 @@ class Parser {
         if (this.pos < this.lines.length) this.pos++;
 
         return {
-            name: 'codeblock',
+            name: Token.codeblock,
             attributes: { language: lang },
             children: contentLines.map(line => ({ name: 'code-line', attributes: { content: line }, children: [] }))
         };
@@ -176,12 +178,11 @@ class Parser {
     }
 
     /**
-     * Parse table options string into an object.
+     * Tokenize table options string into an object.
      * @param {string} text
      * @returns {Object<string, string>}
      */
-    parseOptions(text) {
-        // {{{
+    tokenizeOptions(text) {
         // SYNTAX ::= [key1=val1, key2="val2", ...]
         if (text[0] != `[` || text[text.length-1] != ']') { console.error("Incorrect attribute input:", text); return {} }
 
@@ -229,17 +230,16 @@ class Parser {
             key = ''; value = '';
         }
         return options;
-        // }}}
     }
 
     /**
-     * Parse a table block into a Node.
+     * Tokenize a table block into a Node.
      * @returns {Node}
      */
-    parseTable() {
+    tokenizeTable() {
         let options = {};
         if (this.lines[this.pos].startsWith('[')) {
-            options = this.parseOptions(this.lines[this.pos++]);
+            options = this.tokenizeOptions(this.lines[this.pos++]);
         }
         if (this.lines[this.pos] === '|===') this.pos++;
 
@@ -260,14 +260,22 @@ class Parser {
         if (this.pos < this.lines.length) this.pos++;
 
         return {
-            name: 'table',
+            name: Token.table,
             attributes: options,
             children: rows.map(cells => ({
-                name: 'table-row',
+                name: Token.table_row,
                 attributes: {},
-                children: cells.map(cell => ({ name: 'table-cell', attributes: { content: cell }, children: [] }))
+                children: cells.map(cell => ({ name: Token.table_cell, attributes: { content: cell }, children: [] }))
             }))
         };
+    }
+
+    count_first_chars(text, char) {
+        let count = 0;
+        for (let i = 0; i < text.length; i++) {
+            if (text[i] === char) { count += 1 } else { break }
+        }
+        return count
     }
 
     /**
@@ -276,29 +284,49 @@ class Parser {
      * @returns {boolean}
      */
     isListItem(line) {
-        return line.startsWith('- ') || line.startsWith('. ');
+        const firstChar = line.charAt(0);
+        return firstChar === '-' || firstChar === '.';
     }
 
     /**
-     * Parse a sequence of list items into a list Node.
+     * Tokenize a flat sequence of list items, assigning a level based on repeated symbols.
      * @returns {Node}
      */
-    parseList() {
-        const isOrdered = this.lines[this.pos].startsWith('. ');
+    tokenizeList() {
+        const char = this.lines[this.pos].charAt(0);
+        const isOrdered = char === '.';
         const items = [];
+
         while (this.pos < this.lines.length && this.isListItem(this.lines[this.pos])) {
             const line = this.lines[this.pos++];
-            const text = line.substring(2).trim();
-            items.push({ name: 'list-item', attributes: {}, children: [{ name: 'text', attributes: { content: text }, children: [] }] });
+            const level = this.count_first_chars(line, char);
+            const content = line.slice(level).trim();
+
+            items.push({
+                name: 'list-item',
+                attributes: { level: level.toString() },
+                children: [
+                    {
+                        name: 'text',
+                        attributes: { content },
+                        children: []
+                    }
+                ]
+            });
         }
-        return { name: isOrdered ? 'ordered-list' : 'unordered-list', attributes: {}, children: items };
+
+        return {
+            name: isOrdered ? 'ordered-list' : 'unordered-list',
+            attributes: {},
+            children: items
+        };
     }
 
     /**
-     * Parse one or more lines into a paragraph Node.
+     * Tokenize one or more lines into a paragraph Node.
      * @returns {Node}
      */
-    parseParagraph() {
+    tokenizeParagraph() {
         const lines = [];
         while (this.pos < this.lines.length) {
             const line = this.lines[this.pos];
@@ -308,6 +336,6 @@ class Parser {
             this.pos++;
         }
         const content = lines.join(' ');
-        return { name: 'paragraph', attributes: {}, children: [{ name: 'text', attributes: { content }, children: [] }] };
+        return { name: Token.paragraph, attributes: {}, children: [{ name: Token.text, attributes: { content }, children: [] }] };
     }
 }

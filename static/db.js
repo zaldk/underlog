@@ -169,10 +169,15 @@ document.getElementById('upload_form').addEventListener('submit', async (event) 
 document.getElementById('image_select').addEventListener('change', async (event) => {
     const image_select = event.target;
     const image_name = image_select.value;
+    const rename_container = document.getElementById('rename_form');
+
     if (!image_name) {
+        rename_container.classList.remove('visible');
         console.error('Please select an image.');
         return;
     }
+
+    rename_container.classList.add('visible');
 
     try {
         const stored_image = await get_image(image_name);
@@ -193,7 +198,6 @@ document.getElementById('image_select').addEventListener('change', async (event)
         console.error('Error retrieving image:', error);
     }
 });
-
 document.addEventListener('DOMContentLoaded', populate_image_select);
 
 document.getElementById('delete_btn').addEventListener('click', async () => {
@@ -215,5 +219,44 @@ document.getElementById('delete_btn').addEventListener('click', async () => {
         document.getElementById('image_container').innerHTML = '';
     } catch (error) {
         console.error('Error deleting image:', error);
+    }
+});
+
+document.getElementById('rename_form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const image_select = document.getElementById('image_select');
+    const rename_input = document.getElementById('rename_input');
+    const old_name = image_select.value;
+    const new_name = rename_input.value.trim();
+
+    if (!old_name || !new_name) {
+        console.error('Please select an image and enter a new name.');
+        return;
+    }
+
+    if (old_name === new_name) {
+        console.error('New name cannot be the same as the current name.');
+        return;
+    }
+
+    try {
+        const existing_image = await get_image(old_name);
+        if (!existing_image) {
+            console.error('Image not found.');
+            return;
+        }
+
+        await store_image({ name: new_name, blob: existing_image.blob });
+        await delete_image(old_name);
+        await populate_image_select();
+
+        image_select.value = new_name;
+        image_select.dispatchEvent(new Event('change'));
+
+        rename_input.value = '';
+        console.info(`Image renamed from "${old_name}" to "${new_name}".`);
+    } catch (error) {
+        console.error('Error renaming image:', error);
     }
 });

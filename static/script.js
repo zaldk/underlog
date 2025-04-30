@@ -18,10 +18,52 @@ jar.onUpdate(code => { globalThis.editor_content = code })
 /*================================================================================*/
 
 import * as db from './db.js'
-import * as parser from './parser.js'
+import * as tokenizer from './tokenizer.js'
+import * as svg from './svg.js'
 
-console.log(await db.get_all_image_names())
-// console.dir(JSON.stringify(parser.parseReport(get_test_content()), null, 4))
+console.log(await db.get_all_image_names());
+
+const tokens = tokenizer.tokenizeReport(get_test_content());
+// console.log(JSON.stringify(tokens, null, 4));
+
+const svgs = svg.parse(tokens);
+// console.log(JSON.stringify(svgs, null, 4));
+
+const result = svgs.map(rs => svg.evaluate(rs));
+// console.log(JSON.stringify(result_svg, null, 4));
+for (let i = 0; i <= result.length; i += 1) {
+    document.getElementById("result_tab").innerHTML += result[i] + '\n'
+}
+
+function _get_test_content() {
+    // {{{
+    return `
+# Heading
+
+A paragraph, with some text.
+
+A multi-line paragraph
+that is only written multi-line,
+not actually.
+
+And a list for good measure:
+. Item 1
+.. Item 1.1
+. Item 2
+
+0 0123456789
+1 0123456789
+2 0123456789
+3 0123456789
+4 0123456789
+5 0123456789
+6 0123456789
+7 0123456789
+8 0123456789
+9 0123456789
+`
+    // }}}
+}
 
 function get_test_content() {
     // {{{
@@ -112,7 +154,7 @@ function get_test_content() {
 
 Архитектура приложения — клиент‑серверная модель SPA. Клиент (Ace Editor + JS) конвертирует Asciidoc в SVG для предпросмотра, сервер (Gleam) — в PDF.
 
-image::blob:http://localhost:42069/d4deb6f7-124f-4efe-ba74-9968870ab851[Клиент‑серверная архитектура]
+//image::blob:http://localhost:42069/d4deb6f7-124f-4efe-ba74-9968870ab851[Клиент‑серверная архитектура]
 
 ### Составляющие архитектуры
 
@@ -124,7 +166,7 @@ image::blob:http://localhost:42069/d4deb6f7-124f-4efe-ba74-9968870ab851[Клие
 
 Переход на The Elm Architecture для более чёткого управления состоянием:
 
-image::blob:http://localhost:42069/73c43758-506c-45c8-b4f4-020941e66ae9[Архитектура TEA]
+//image::blob:http://localhost:42069/73c43758-506c-45c8-b4f4-020941e66ae9[Архитектура TEA]
 
 # Реализация MVP
 
@@ -153,7 +195,7 @@ image::blob:http://localhost:42069/73c43758-506c-45c8-b4f4-020941e66ae9[Архи
 
 # Иллюстрация последовательности действий
 
-image::blob:http://localhost:42069/c1c8949f-e689-466d-b14f-e51f0075809b[Диаграмма последовательности]
+//image::blob:http://localhost:42069/c1c8949f-e689-466d-b14f-e51f0075809b[Диаграмма последовательности]
 
 # Потоки данных (DFD)
 
@@ -164,13 +206,13 @@ image::blob:http://localhost:42069/c1c8949f-e689-466d-b14f-e51f0075809b[Диаг
 
 ## Иллюстрация потоков данных
 
-image::blob:http://localhost:42069/2c07074f-9287-467e-b063-b963073120c5[Диаграмма потока данных]
+//image::blob:http://localhost:42069/2c07074f-9287-467e-b063-b963073120c5[Диаграмма потока данных]
 
 # Тестирование
 
 ## Тестирование UX/UI
 
-image::blob:http://localhost:42069/560c829b-02c6-4046-85cc-7314a643396f[Скриншот работы сайта]
+//image::blob:http://localhost:42069/560c829b-02c6-4046-85cc-7314a643396f[Скриншот работы сайта]
 
 ## Проверка функциональности
 
@@ -238,23 +280,25 @@ pub fn convert(doc: String) -> Result(Svg, String) {
     // }}}
 }
 
-// this code just nneds to run after page load, i tried normally, but it didnt work.
+// this code just neds to run after page load, i tried normally, but it didnt work.
 // web fucking sucks. vibe coding it is.
-new Promise((resolve, _reject) => {
-    const tab_buttons = document.querySelectorAll('.tab_button');
-    const tab_contents = document.querySelectorAll('.tab_content');
+new Promise((resolve, _) => {
+    document.addEventListener('DOMContentLoaded', () => {
+        const tab_buttons = document.querySelectorAll('.tab_button');
+        const tab_contents = document.querySelectorAll('.tab_content');
 
-    tab_buttons.forEach(button => {
-        button.addEventListener('click', () => {
-            const target_id = button.getAttribute('data-tab');
+        tab_buttons.forEach(button => {
+            button.addEventListener('click', () => {
+                const target_id = button.getAttribute('data-tab');
 
-            // Remove active class from all buttons and contents
-            tab_buttons.forEach(btn => btn.classList.remove('active'));
-            tab_contents.forEach(tab => tab.classList.remove('active'));
+                // Remove active class from all buttons and contents
+                tab_buttons.forEach(btn => btn.classList.remove('active'));
+                tab_contents.forEach(tab => tab.classList.remove('active'));
 
-            // Activate selected tab and button
-            button.classList.add('active');
-            document.getElementById(target_id).classList.add('active');
+                // Activate selected tab and button
+                button.classList.add('active');
+                document.getElementById(target_id).classList.add('active');
+            });
         });
     });
     resolve();

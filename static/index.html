@@ -21,29 +21,35 @@
 
         <div id="right_panel" class="body_container">
             <div id="tab_bar">
-                <button class="tab_button" data-tab="result_tab">Result</button>
-                <button class="tab_button active" data-tab="upload_tab">Upload</button>
+                <button class="tab_button active" data-tab="result_tab">Result</button>
+                <button class="tab_button" data-tab="upload_tab">Upload</button>
             </div>
 
-            <div id="upload_tab" class="tab_content active">
-                <h1>Upload Image</h1>
+            <div id="upload_tab" class="tab_content">
+                <h1>Upload</h1>
                 <form id="upload_form">
                     <input type="file" id="file_input" accept="image/*" required>
                     <button type="submit">Upload</button>
                 </form>
-                <h2>Retrieve Image</h2>
+
+                <h2>Images</h2>
                 <form id="retrieve_form">
                     <select id="image_select" required>
                         <option value="" disabled selected>Select an image</option>
                     </select>
                     <button type="button" id="delete_btn">Delete</button>
                 </form>
+
+                <form id="rename_form" class="rename_container">
+                    <input type="text" id="rename_input" placeholder="New image name" required />
+                    <button type="submit">Rename</button>
+                </form>
+
                 <div id="image_container"></div>
             </div>
 
-            <div id="result_tab" class="tab_content">
-                <h1>Results will be here</h1>
-            </div>
+
+            <div id="result_tab" class="tab_content active"> </div>
         </div>
     </body>
 </html>
