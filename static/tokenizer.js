@@ -1,7 +1,6 @@
 /**
- * A tokenizer for report documents based on the given BNF.
+ * A tokenizer for report documents.
  * Produces a JSON tree of nodes: { name, attributes, children }.
- * Does not use regular expressions.
  */
 
 import { Token } from './common.js'
@@ -46,12 +45,12 @@ class Tokenizer {
             /** @type {Node} */
             let node;
             switch (true) {
-                case this.isHeading(line):    node = this.tokenizeHeading();   break;
-                case this.isImage(line):      node = this.tokenizeImage();     break;
-                case this.isCodeBlock(line):  node = this.tokenizeCodeBlock(); break;
-                case this.isTableStart(line): node = this.tokenizeTable();     break;
-                case this.isListItem(line):   node = this.tokenizeList();      break;
-                default:                      node = this.tokenizeParagraph(); break;
+                case this.is_heading(line):     node = this.tokenize_heading();    break;
+                case this.is_image(line):       node = this.tokenize_image();      break;
+                case this.is_code_block(line):  node = this.tokenize_code_block(); break;
+                case this.is_table_start(line): node = this.tokenize_table();      break;
+                case this.is_list_item(line):   node = this.tokenize_list();       break;
+                default:                        node = this.tokenize_paragraph();  break;
             }
 
             nodes.push(node);
@@ -64,7 +63,7 @@ class Tokenizer {
      * @param {string} line
      * @returns {boolean}
      */
-    isHeading(line) {
+    is_heading(line) {
         return line.charAt(0) === '#';
     }
 
@@ -72,7 +71,7 @@ class Tokenizer {
      * Tokenize a heading line into a Node.
      * @returns {Node}
      */
-    tokenizeHeading() {
+    tokenize_heading() {
         const line = this.lines[this.pos++];
         let name = Token.heading;
         let level = 0;
@@ -100,29 +99,32 @@ class Tokenizer {
 
     /**
      * Check if a line is an image declaration.
+     * Expects format: image::image_name[caption]
      * @param {string} line
      * @returns {boolean}
      */
-    isImage(line) {
+    is_image(line) {
         return line.startsWith('image::');
     }
 
     /**
      * Tokenize an image declaration into a Node.
+     * Extracts image name (key for IndexedDB) and caption.
      * @returns {Node}
      */
-    tokenizeImage() {
+    tokenize_image() {
         const line = this.lines[this.pos++];
         const start = 'image::'.length;
         const brackOpen = line.indexOf('[', start);
-        const path = brackOpen >= 0 ? line.substring(start, brackOpen) : '';
+        // Extract the name (identifier) between 'image::' and '[' or end of line
+        const image_name = (brackOpen >= 0 ? line.substring(start, brackOpen) : line.substring(start)).trim();
         const brackClose = line.indexOf(']', brackOpen);
         const caption = (brackOpen >= 0 && brackClose > brackOpen)
             ? line.substring(brackOpen + 1, brackClose)
             : '';
         return {
             name: Token.image,
-            attributes: { path, caption },
+            attributes: { name: image_name, caption },
             children: []
         };
     }
@@ -132,7 +134,7 @@ class Tokenizer {
      * @param {string} line
      * @returns {boolean}
      */
-    isCodeBlock(line) {
+    is_code_block(line) {
         return line.startsWith('```');
     }
 
@@ -140,7 +142,7 @@ class Tokenizer {
      * Tokenize a fenced code block into a Node.
      * @returns {Node}
      */
-    tokenizeCodeBlock() {
+    tokenize_code_block() {
         const startLine = this.lines[this.pos++];
         const lang = startLine.length > 3
             ? startLine.substring(3).trim()
@@ -164,7 +166,7 @@ class Tokenizer {
      * @param {string} line
      * @returns {boolean}
      */
-    isTableStart(line) {
+    is_table_start(line) {
         return line.startsWith('[') || line === '|===';
     }
 
@@ -173,7 +175,7 @@ class Tokenizer {
      * @param {string} char
      * @returns {boolean}
      */
-    isSpace(char) {
+    is_space(char) {
         return char === " " || char === "\t" || char === "\r" || char === "\n";
     }
 
@@ -182,7 +184,7 @@ class Tokenizer {
      * @param {string} text
      * @returns {Object<string, string>}
      */
-    tokenizeOptions(text) {
+    tokenize_options(text) {
         // SYNTAX ::= [key1=val1, key2="val2", ...]
         if (text[0] != `[` || text[text.length-1] != ']') { console.error("Incorrect attribute input:", text); return {} }
 
@@ -191,7 +193,7 @@ class Tokenizer {
         let value = ""
         for (let i = 1; i < text.length-2; i += 1) {
             // KEY
-            while (this.isSpace(text[i]) && i < text.length-1) { i += 1 }
+            while (this.is_space(text[i]) && i < text.length-1) { i += 1 }
             for (; text[i] !== "=" && i < text.length-1; i += 1) {
                 if (text[i] === ",") {
                     if (key.trim() !== '') {
@@ -208,7 +210,7 @@ class Tokenizer {
             // VALUE
             // if starts with `"` then loop until `"`
             // otherwise loop until `,`
-            while (this.isSpace(text[i]) && i < text.length-1) { i += 1 }
+            while (this.is_space(text[i]) && i < text.length-1) { i += 1 }
             if (text[i] === `"`) {
                 i += 1;
                 for (; text[i] !== `"` && i < text.length-1; i += 1) {
@@ -236,10 +238,10 @@ class Tokenizer {
      * Tokenize a table block into a Node.
      * @returns {Node}
      */
-    tokenizeTable() {
+    tokenize_table() {
         let options = {};
         if (this.lines[this.pos].startsWith('[')) {
-            options = this.tokenizeOptions(this.lines[this.pos++]);
+            options = this.tokenize_options(this.lines[this.pos++]);
         }
         if (this.lines[this.pos] === '|===') this.pos++;
 
@@ -283,7 +285,7 @@ class Tokenizer {
      * @param {string} line
      * @returns {boolean}
      */
-    isListItem(line) {
+    is_list_item(line) {
         const firstChar = line.charAt(0);
         return firstChar === '-' || firstChar === '.';
     }
@@ -292,12 +294,12 @@ class Tokenizer {
      * Tokenize a flat sequence of list items, assigning a level based on repeated symbols.
      * @returns {Node}
      */
-    tokenizeList() {
+    tokenize_list() {
         const char = this.lines[this.pos].charAt(0);
         const isOrdered = char === '.';
         const items = [];
 
-        while (this.pos < this.lines.length && this.isListItem(this.lines[this.pos])) {
+        while (this.pos < this.lines.length && this.is_list_item(this.lines[this.pos])) {
             const line = this.lines[this.pos++];
             const level = this.count_first_chars(line, char);
             const content = line.slice(level).trim();
@@ -326,12 +328,12 @@ class Tokenizer {
      * Tokenize one or more lines into a paragraph Node.
      * @returns {Node}
      */
-    tokenizeParagraph() {
+    tokenize_paragraph() {
         const lines = [];
         while (this.pos < this.lines.length) {
             const line = this.lines[this.pos];
-            if (line.trim() === '' || this.isHeading(line) || this.isImage(line)
-                || this.isCodeBlock(line) || this.isTableStart(line) || this.isListItem(line)) break;
+            if (line.trim() === '' || this.is_heading(line) || this.is_image(line)
+                || this.is_code_block(line) || this.is_table_start(line) || this.is_list_item(line)) break;
             lines.push(line.trim());
             this.pos++;
         }

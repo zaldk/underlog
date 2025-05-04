@@ -22,10 +22,15 @@
         <div id="right_panel" class="body_container">
             <div id="tab_bar">
                 <button class="tab_button active" data-tab="result_tab">Result</button>
-                <button class="tab_button" data-tab="upload_tab">Upload</button>
+                <button class="tab_button" data-tab="port_tab">Import/Export</button>
+                <button class="tab_button" data-tab="projects_tab">Projects</button>
             </div>
 
-            <div id="upload_tab" class="tab_content">
+            <div id="port_tab" class="tab_content">
+                <button type="button" id="export_svg_btn">Export as SVG</button>
+                <button type="button" id="export_pdf_btn">Export as PDF</button>
+                <button type="button" id="export_odt_btn">Export as ODT</button>
+
                 <h1>Upload</h1>
                 <form id="upload_form">
                     <input type="file" id="file_input" accept="image/*" required>
@@ -50,6 +55,12 @@
 
 
             <div id="result_tab" class="tab_content active"> </div>
+
+            <div id="projects_tab" class="tab_content">
+                Here will be a list of all projects.
+
+                Coming Soon (tm)
+            </div>
         </div>
     </body>
 </html>

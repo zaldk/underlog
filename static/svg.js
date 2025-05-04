@@ -1,4 +1,5 @@
-import { Token } from './common.js'; // Assuming Token is in common.js
+import { Token } from './common.js';
+import * as db from './db.js';
 
 // --- Keep these constants and helpers from the "old" code ---
 const UNITS = {
@@ -20,7 +21,6 @@ const OFFSETS = {
 const WIDTH = 210 * UNITS.mm2px;
 const HEIGHT = 297 * UNITS.mm2px;
 let TEXT_SIZE = 14 * UNITS.pt2px; // Default text size in px
-const FIRST_LINE_WIDTH = WIDTH - BOUNDS.left - BOUNDS.right - OFFSETS.paragraph;
 const LINE_WIDTH = WIDTH - BOUNDS.left - BOUNDS.right;
 const SVG = {
     type: "svg",
@@ -81,9 +81,7 @@ export function evaluate(svg) {
             for (let j = 0; j < attrs.length; j++) {
                 result += ` ${attrs[j][0]}="${attrs[j][1]}"`
             }
-            result += `>\n`
-            result += `${child.text}\n`
-            result += `</text>\n`
+            result += `>${child.text}</text>\n`
         } else if (child.type === "image") {
             result += `<image`;
             for (let j = 0; j < attrs.length; j++) {
@@ -99,70 +97,134 @@ export function evaluate(svg) {
     return result
 }
 
-const IMAGE_HEIGHT_CACHE = {};
+// Caches for image data retrieved from IndexedDB
+export const IMAGE_HEIGHT_CACHE = {}; // Stores dimensions: { name: [width, height] | Promise }
+export const IMAGE_URL_CACHE = {};    // Stores Blob URLs: { name: string }
+
 /**
- * Gets image dimensions, potentially asynchronously.
- * Uses a cache and triggers a callback when dimensions are finalized (either from cache or after loading).
+ * Asynchronously retrieves image dimensions, fetching from IndexedDB if necessary.
+ * Manages Blob URL creation and caching.
+ * Always returns a tuple [width, height], returning [0, 0] if the image
+ * cannot be found, loaded, or dimensions determined.
  *
- * @param {string} url - The URL of the image.
- * @returns {[number, number] | null} Returns dimensions [width, height] if already cached, otherwise null.
+ * @param {string} name - The name of the image (key in IndexedDB).
+ * @returns {Promise<[number, number]>} A promise resolving to [width, height] tuple. Returns [0, 0] on failure.
  */
-function getImageHeight(url) {
-    const cachedDimensions = IMAGE_HEIGHT_CACHE[url];
-
-    // 1. Already cached (and not a promise)? Return dimensions immediately.
-    if (Array.isArray(cachedDimensions)) {
-        // Make sure it's the final dimensions array, not the error marker [0,0] initially set on error?
-        // Or assume cache only holds valid dimensions or promises.
-        if (cachedDimensions.length === 2 && cachedDimensions[0] > 0) {
-            // console.log(`Cache hit for ${url}:`, cachedDimensions);
-            return cachedDimensions;
-        }
-        // If cache holds [0,0] error marker, treat as uncached for initial return,
-        // but the promise logic below will prevent re-fetching if error already occurred.
+async function get_image_height(name) {
+    // Ensure name is valid
+    if (!name) {
+        //console.warn("get_image_height called with invalid name.");
+        return [0, 0];
     }
 
-    // 2. Loading already in progress? Return null for now, callback will trigger later.
-    if (cachedDimensions instanceof Promise) {
-        // console.log(`Cache hit (Promise) for ${url}`);
-        // The promise is already running.
-        return null;
+    const cached_entry = IMAGE_HEIGHT_CACHE[name];
+
+    // 1. Check cache: If dimensions array exists, return it.
+    if (Array.isArray(cached_entry)) {
+        // console.log(`Dimension cache hit (Array) for ${name}:`, cached_entry);
+        return cached_entry; // Return cached dimensions or [0, 0] error state
     }
 
-    // 3. Not cached and not loading? Start loading.
-    // console.log(`Cache miss for ${url}, starting load.`);
-    const promise = new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            const dimensions = [img.width, img.height];
-            IMAGE_HEIGHT_CACHE[url] = dimensions; // Cache dimensions
-            // console.log(`Loaded ${url}:`, dimensions);
-            img.remove();
-            resolve(dimensions);
-        };
-        img.onerror = (err) => {
-            console.error(`Failed to load image: ${url}`, err);
-            IMAGE_HEIGHT_CACHE[url] = [0, 0]; // Cache error state (e.g., [0,0])
-            img.remove();
-            reject(new Error(`Failed to load image ${url}`));
-        };
-        img.src = url;
-    }).then(
-        (dimensions) => {
-            // Success: Trigger the update callback
-            return dimensions; // Pass dimensions along if chained
-        },
-        (error) => {
-            // Error: Still trigger the update callback (maybe to show error state)
-            throw error; // Re-throw error if needed elsewhere
+    // 2. Check cache: If a promise exists, await it.
+    if (cached_entry instanceof Promise) {
+        // console.log(`Dimension cache hit (Promise) for ${name}, awaiting...`);
+        try {
+            // Await the existing promise to complete.
+            const dimensions = await cached_entry;
+            return dimensions; // Return the resolved dimensions from the ongoing promise
+        } catch (error) {
+            console.error(`Error awaiting cached promise for image "${name}":`, error);
+            // Ensure cache reflects error state if the awaited promise failed critically
+            if (!(Array.isArray(IMAGE_HEIGHT_CACHE[name]) && IMAGE_HEIGHT_CACHE[name][0] === 0)) {
+                IMAGE_HEIGHT_CACHE[name] = [0, 0];
+            }
+            return [0, 0]; // Return zero-values on error
         }
-    );
+    }
 
-    // Store the promise in the cache immediately to prevent duplicate requests
-    IMAGE_HEIGHT_CACHE[url] = promise;
+    // 3. Cache miss: Start loading from DB and await the result.
+    // console.log(`Dimension cache miss for ${name}, starting DB load.`);
 
-    // Return null because dimensions are not available *yet*.
-    return null;
+    // Create the promise to perform the loading operation.
+    const loading_promise = new Promise(async (resolve) => {
+        let blob_url = null; // Keep track of blob_url to revoke on error
+        try {
+            const stored_image = await db.get_image(name);
+
+            if (!stored_image || !stored_image.blob) {
+                // Image not found in DB is not necessarily an *error*, but results in 0 dimensions
+                //console.warn(`Image "${name}" not found in DB or has no blob.`);
+                resolve([0, 0]); // Resolve with zero-dimensions
+                return;
+            }
+
+            // Revoke previous URL if exists for this name before creating a new one
+            if (IMAGE_URL_CACHE[name]) {
+                URL.revokeObjectURL(IMAGE_URL_CACHE[name]);
+                // console.log(`Revoked old blob URL for ${name}`);
+            }
+
+            blob_url = URL.createObjectURL(stored_image.blob);
+            IMAGE_URL_CACHE[name] = blob_url; // Cache the new URL immediately
+
+            const img = new Image();
+            img.onload = () => {
+                const dimensions = [img.naturalWidth, img.naturalHeight];
+                // Don't cache dimensions here inside promise, cache the final result after await
+                img.remove(); // Clean up image element
+                // Do NOT revoke blob_url here, it's needed for rendering
+                resolve(dimensions); // Resolve the promise with dimensions
+            };
+            img.onerror = (err) => {
+                console.error(`Failed to load image dimensions from blob URL for: ${name}`, err);
+                // Don't keep a broken blob URL
+                if (blob_url) {
+                    URL.revokeObjectURL(blob_url);
+                    delete IMAGE_URL_CACHE[name];
+                }
+                img.remove();
+                resolve([0, 0]); // Resolve with zero-dimensions on image load error
+            };
+            img.src = blob_url;
+
+        } catch (db_error) {
+            console.error(`Failed during DB access or image processing for "${name}":`, db_error);
+            // Ensure cleanup if blob_url was created before DB error somehow
+            if (blob_url && IMAGE_URL_CACHE[name] === blob_url) {
+                URL.revokeObjectURL(blob_url);
+                delete IMAGE_URL_CACHE[name];
+            }
+            resolve([0, 0]); // Resolve with zero-dimensions on DB or other errors
+        }
+    });
+
+    // Store the promise in the cache immediately so subsequent calls await the same promise.
+    IMAGE_HEIGHT_CACHE[name] = loading_promise;
+
+    try {
+        // Await the loading promise we just created.
+        const final_dimensions = await loading_promise;
+        // Cache the final result (which could be [w,h] or [0,0])
+        IMAGE_HEIGHT_CACHE[name] = final_dimensions;
+        // If dimensions are [0,0], potentially remove the blob URL as it might be invalid/unusable
+        if (final_dimensions[0] === 0 && IMAGE_URL_CACHE[name]) {
+            //console.warn(`Image "${name}" resulted in [0,0] dimensions, removing potentially invalid blob URL from cache.`);
+            URL.revokeObjectURL(IMAGE_URL_CACHE[name]);
+            delete IMAGE_URL_CACHE[name];
+        }
+        return final_dimensions;
+    } catch (error) {
+        // This catch is less likely to be hit if the promise always resolves,
+        // but good for robustness in case of unexpected promise rejection.
+        console.error(`Unexpected error awaiting image load promise for "${name}":`, error);
+        IMAGE_HEIGHT_CACHE[name] = [0, 0]; // Ensure cache reflects error state
+        // Clean up potential URL cache entry
+        if (IMAGE_URL_CACHE[name]) {
+            try { URL.revokeObjectURL(IMAGE_URL_CACHE[name]); } catch(e){}
+            delete IMAGE_URL_CACHE[name];
+        }
+        return [0, 0];
+    }
 }
 
 // --- END of old helpers/constants ---
@@ -176,7 +238,7 @@ function getImageHeight(url) {
  * @param {Node[]} nodes - Array of top-level nodes from parseReport.
  * @returns {Object[]} An array of SVG page objects based on currently available data. May be incomplete/incorrect layout initially.
  */
-export function parse(nodes) {
+export async function parse(nodes) {
     let TOC = [];
     let TOC_PAGE_INDEX = -1;
     let Y_OFFSET = BOUNDS.top;
@@ -199,7 +261,19 @@ export function parse(nodes) {
         }
     }
 
-    const addWrappedText = ({
+    /**
+     * Adds text to the current SVG page, handling word wrapping and justification.
+     * @param {object} options - Text options.
+     * @param {string} options.text - The text content.
+     * @param {number} options.text_start - The starting X coordinate for the text block.
+     * @param {number} options.available_width - The maximum width available for text lines.
+     * @param {number} [options.first_line_indent=0] - Additional indent for the first line.
+     * @param {'left'|'center'|'right'|'justify'} [options.align='left'] - Text alignment.
+     * @param {number} [options.text_size=TEXT_SIZE] - Font size in pixels.
+     * @param {string} [options.weight='normal'] - Font weight.
+     * @returns {number} The number of lines added.
+     */
+    const add_wrapped_text = ({
         text,
         text_start,
         available_width,
@@ -208,6 +282,7 @@ export function parse(nodes) {
         text_size = TEXT_SIZE,
         weight = 'normal'
     }) => {
+        // {{{
         // Make sure it uses the passed current_text_size correctly
         // and increments Y_OFFSET appropriately.
         if (!text) return 0;
@@ -247,6 +322,9 @@ export function parse(nodes) {
                 x_pos = WIDTH/2 - current_line_length_px/2;
                 word_spacing = text_width(" ", text_size);
             }
+            // if (align === 'right') {
+            //     x_pos
+            // }
 
             svgs.at(-1).children.push({
                 type: "text",
@@ -265,6 +343,7 @@ export function parse(nodes) {
             lines_added++;
         }
         return lines_added;
+        // }}}
     };
 
 
@@ -290,23 +369,22 @@ export function parse(nodes) {
     image_counter = 0; // Reset before main processing
 
 
-    // --- Main Rendering Loop (Synchronous) ---
+    // Main Rendering Loop
     heading_counters = [];
 
     for (let i = 0; i < nodes.length; i += 1) {
         const node = nodes[i];
         let current_text_size = TEXT_SIZE;
 
-        // Switch statement for node.name
         switch (node.name) {
-            // ... (cases for paragraph, heading, lists, code, table) ...
             case Token.paragraph: {
                 const textContent = node.children?.[0]?.attributes?.content || '';
-                addWrappedText({ text: textContent, text_start: BOUNDS.left, available_width: LINE_WIDTH, first_line_indent: OFFSETS.paragraph });
+                add_wrapped_text({ text: textContent, text_start: BOUNDS.left, available_width: LINE_WIDTH, first_line_indent: OFFSETS.paragraph });
                 break;
             }
 
             case Token.heading: {
+                // {{{
                 const isNumbered = node.attributes.numbered === 'true';
                 const level = isNumbered ? parseInt(node.attributes.level || '1', 10) : 0;
                 const type = node.attributes.type;
@@ -348,68 +426,120 @@ export function parse(nodes) {
                     }
                 }
                 current_text_size = TEXT_SIZE; // * (level === 1 ? 1.2 : level === 2 ? 1.1 : 1.0);
-                addWrappedText({ text: final_text, text_start: BOUNDS.left, available_width: LINE_WIDTH, first_line_indent: OFFSETS.paragraph, align, weight: 'bold', text_size: current_text_size });
+                add_wrapped_text({ text: final_text, text_start: BOUNDS.left, available_width: LINE_WIDTH, first_line_indent: OFFSETS.paragraph, align, weight: 'bold', text_size: current_text_size });
                 Y_OFFSET += current_text_size * 0.5;
                 break;
+                // }}}
             }
 
-
             case Token.image: {
-                const path = node.attributes.path;
+                // {{{
+                const name = node.attributes.name;
                 const caption = node.attributes.caption || '';
-                let requested_width_percent = 50; // Default or parse from attrs if available
+                // TODO: Allow specifying width, e.g., image::name[caption, width=80%]
+                let requested_width_percent = 50; // Default width
 
                 const target_width_px = LINE_WIDTH * (requested_width_percent / 100);
-                let image_height_px; // Will hold final or placeholder height
+                let image_height_px;
+                let image_href = '#'; // Default placeholder href
 
-                // Call modified getImageHeight
-                const dimensions = getImageHeight(path);
+                const dimensions = await get_image_height(name); // Returns [width, height] or [0, 0]
 
-                if (dimensions) {
-                    // Cache hit: Use actual dimensions
+                // Get the Blob URL from the cache (populated by get_image_height)
+                const cached_url = IMAGE_URL_CACHE[name];
+                if (cached_url) {
+                    image_href = cached_url;
+                } else if (dimensions[0] > 0) {
+                    // If dimensions were loaded but URL somehow missing, log error
+                    console.error(`Dimensions loaded for image "${name}" but Blob URL is missing from cache.`);
+                    image_href = '#error-missing-url'; // Indicate an error state
+                } else {
+                    // Dimensions are [0, 0], likely image failed to load or not found
+                    //console.warn(`Image "${name}" could not be loaded or found.`);
+                    image_href = '#error-not-found';
+                }
+
+
+                // Calculate actual height based on awaited dimensions
+                if (Array.isArray(dimensions) && dimensions[0] > 0) { // Check for valid width
                     image_height_px = target_width_px * (dimensions[1] / dimensions[0]);
                 } else {
-                    // Cache miss or loading: Use placeholder height
-                    console.warn(`Using placeholder height for ${path}`);
-                    image_height_px = target_width_px * 0.25; // Default aspect ratio guess
-                    // The async loading was started inside getImageHeight
+                    // Dimensions are [0, 0] or invalid
+                    //console.warn(`Image "${name}" has zero or invalid dimensions. Using fallback height.`);
+                    image_height_px = target_width_px * 0.6; // Fallback aspect ratio
+                    // Ensure href reflects the error if not already set
+                    if (!image_href.startsWith('#error')) {
+                        image_href = '#error-zero-dimensions';
+                    }
                 }
 
-                // Use image_height_px (actual or placeholder) for layout checks and rendering
-                const required_height = image_height_px + (caption ? TEXT_SIZE * 2.5 : 0);
+                // --- Layout Calculation and Placement ---
+                // Estimate caption height (sync operation)
+                // Note: text_width might need adjustment if run outside browser context
+                const caption_prefix = `Рисунок ?.? – `; // Placeholder prefix for width calc
+                const estimated_full_caption = caption_prefix + caption;
+                const caption_lines_estimate = caption ? Math.ceil(text_width(estimated_full_caption, TEXT_SIZE) / LINE_WIDTH) + 1 : 0;
+                const caption_height = caption ? (TEXT_SIZE * 1.5 * caption_lines_estimate) + (TEXT_SIZE * 0.5) : 0; // Height for caption + spacing
+
+                // Calculate total required height using calculated/fallback image height
+                const required_height = image_height_px + caption_height + TEXT_SIZE * 0.5; // Img + spacing + caption + spacing
+
+                // Check page bounds (sync operation)
+                ensure_bounds(); // Check if starting position is ok
                 if (Y_OFFSET + required_height > HEIGHT - BOUNDS.bottom) {
-                    ensure_bounds(true); // Force new page if placeholder/actual image + caption won't fit
+                    ensure_bounds(true); // Force new page if it won't fit
                 }
 
+                // Add SVG image element (sync operation)
                 const img_x = BOUNDS.left + (LINE_WIDTH / 2) - (target_width_px / 2);
                 svgs.at(-1).children.push({
                     type: "image",
                     attributes: {
                         x: `${img_x}px`,
-                        y: `${Y_OFFSET}px`,
+                        y: `${Y_OFFSET - TEXT_SIZE/2}px`,
                         width: `${target_width_px}px`,
-                        height: `${image_height_px}px`, // Use placeholder or actual height
-                        href: path,
+                        height: `${image_height_px}px`, // Use calculated or fallback height
+                        href: image_href,               // Use cached Blob URL or error placeholder
                         preserveAspectRatio: "xMidYMin meet",
                     },
+                    // No 'text' property for image element
                 });
-                // Crucially, advance Y_OFFSET using the SAME height (placeholder or actual)
-                Y_OFFSET += image_height_px + TEXT_SIZE * 0.5;
 
+                // Advance Y offset (sync operation)
+                Y_OFFSET += image_height_px;
+                Y_OFFSET += TEXT_SIZE * 0.5;
+                ensure_bounds(); // Re-check after spacing
+
+                // Add caption if present (sync operation)
                 if (caption) {
                     image_counter++;
-                    const caption_prefix = `Рисунок ${heading_counters[0] !== undefined ? heading_counters[0] : '?'}.${image_counter} – `;
-                    const full_caption = caption_prefix + caption;
-                    // Use addWrappedText for caption rendering
-                    addWrappedText({ text: full_caption, text_start: BOUNDS.left, available_width: LINE_WIDTH, align: 'center' });
-                    Y_OFFSET += TEXT_SIZE * 0.5; // Space after caption
+                    // Get current chapter number
+                    const chapter_num = (heading_counters && heading_counters.length > 0) ? heading_counters[0] : '?';
+                    const actual_caption_prefix = `Рисунок ${chapter_num}.${image_counter} – `;
+                    const full_caption = actual_caption_prefix + caption;
+
+                    // Add caption text using helper function
+                    add_wrapped_text({
+                        text: full_caption,
+                        text_start: BOUNDS.left,
+                        available_width: LINE_WIDTH,
+                        align: 'center',
+                        text_size: 14 * UNITS.pt2px, // Should be 12pt and halfbold
+                    });
+                    // Y_OFFSET is advanced within add_wrapped_text
                 }
 
-                break;
-            } // End case Token.image
+                // Add standard spacing after the image/caption block (sync operation)
+                Y_OFFSET += 6 * UNITS.mm2px;
+                // --- End Layout Calculation and Placement ---
+
+                break; // End case Token.image
+                // }}}
+            }
 
             case Token.ordered_list:
             case Token.unordered_list: {
+                // {{{
                 const isOrdered = node.name === Token.ordered_list;
                 list_counters[isOrdered ? 'ordered' : 'unordered'] = []; // Reset counters
 
@@ -448,16 +578,18 @@ export function parse(nodes) {
                         text: list_char,
                     });
 
-                    const linesAdded = addWrappedText({ text: itemContent, text_start: text_x, available_width: text_available_width });
+                    const linesAdded = add_wrapped_text({ text: itemContent, text_start: text_x, available_width: text_available_width });
                     if (linesAdded === 0) {
                         Y_OFFSET += current_text_size * 1.5;
                     }
                 }
                 Y_OFFSET += TEXT_SIZE * 0.5;
                 break;
+                // }}}
             }
 
             case Token.codeblock: {
+                // {{{
                 const lang = node.attributes.language;
                 const codeFontFamily = 'Courier New, monospace';
                 const codeFontSize = TEXT_SIZE * 0.9;
@@ -489,11 +621,12 @@ export function parse(nodes) {
                 // Optional background rect logic would go here
                 Y_OFFSET += TEXT_SIZE * 0.5;
                 break;
+                // }}}
             }
 
             case Token.table: {
-                // Basic Table Rendering (as before)
-                console.warn("Basic Table Rendering: Borders, column widths, and advanced formatting not implemented.");
+                // {{{
+                //console.warn("Basic Table Rendering: Borders, column widths, and advanced formatting not implemented.");
                 const tableFontFamily = 'Times New Roman';
                 const tableFontSize = TEXT_SIZE * 0.9;
                 const tableLineHeight = tableFontSize * 1.4;
@@ -531,10 +664,11 @@ export function parse(nodes) {
                 }
                 Y_OFFSET += TEXT_SIZE * 0.5;
                 break;
+                // }}}
             }
 
             default:
-                console.warn(`Unhandled node type: ${node.name}`);
+                //console.warn(`Unhandled node type: ${node.name}`);
                 break;
         }
         // Ensure bounds after processing each top-level node? Maybe not needed if handled within blocks.
@@ -547,7 +681,7 @@ export function parse(nodes) {
         svgs.at(-1).children.push(get_page_enum(page_count));
     }
 
-    // --- TOC Generation (mostly same as before) ---
+    // --- TOC Generation ---
     if (TOC_PAGE_INDEX !== -1 && TOC_PAGE_INDEX < svgs.length) {
         const tocPage = svgs[TOC_PAGE_INDEX];
         // Reset Y_OFFSET specifically for drawing TOC content
@@ -574,7 +708,7 @@ export function parse(nodes) {
             // Need a separate ensure_bounds check for TOC page content height
             if (tocYOffset >= HEIGHT - BOUNDS.bottom - TEXT_SIZE) {
                 // Handle TOC spanning multiple pages if necessary (complex)
-                console.warn("TOC content exceeds single page height - not fully handled.");
+                //console.warn("TOC content exceeds single page height - not fully handled.");
                 break; // Stop adding entries if page full
             }
 
@@ -582,18 +716,19 @@ export function parse(nodes) {
             const page_num_str = entry.page !== -1 ? `${entry.page}` : '??';
             const textWidth = text_width(entry.text, TEXT_SIZE);
             const pageNumWidth = text_width(page_num_str, TEXT_SIZE);
-            const space_for_dots = toc_line_width - textWidth - pageNumWidth - (2 * dot_width);
-            const num_dots = Math.max(0, Math.floor(space_for_dots / dot_width));
+            const space_for_dots = toc_line_width - textWidth - pageNumWidth;
+            const num_dots = Math.max(0, Math.floor(space_for_dots / dot_width) + 1);
             const dots = '.'.repeat(num_dots);
+            const dot_spacing = space_for_dots / num_dots
 
             tocPage.children.push({ /* Entry text */
                 type: "text", attributes: { x: `${BOUNDS.left}px`, y: `${tocYOffset}px`, "font-size": `${TEXT_SIZE}px`, "font-family": "Times New Roman" }, text: entry.text,
             });
             tocPage.children.push({ /* Dots */
-                type: "text", attributes: { x: `${BOUNDS.left + textWidth + dot_width}px`, y: `${tocYOffset}px`, "font-size": `${TEXT_SIZE}px`, "font-family": "Times New Roman", "letter-spacing": "1px" }, text: dots,
+                type: "text", attributes: { x: `${BOUNDS.left + textWidth}px`, y: `${tocYOffset}px`, "font-size": `${TEXT_SIZE}px`, "font-family": "Times New Roman", "letter-spacing": `${dot_spacing-dot_width}px` }, text: dots,
             });
             tocPage.children.push({ /* Page number */
-                type: "text", attributes: { x: `${WIDTH - BOUNDS.right}px`, y: `${tocYOffset}px`, "font-size": `${TEXT_SIZE}px`, "font-family": "Times New Roman" }, text: page_num_str,
+                type: "text", attributes: { x: `${WIDTH - BOUNDS.right - pageNumWidth}px`, y: `${tocYOffset}px`, "font-size": `${TEXT_SIZE}px`, "font-family": "Times New Roman" }, text: page_num_str,
             });
             tocYOffset += TEXT_SIZE * 1.5;
         }

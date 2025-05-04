@@ -52,6 +52,22 @@ body {
     border-bottom: 1px solid #444;
 }
 
+#result_tab {
+    display: grid;
+    justify-content: center;
+    gap: 1rem;
+}
+
+/* #port_tab { */
+/*     display: flex; */
+/*     flex-direction: column; */
+/*     gap: 1rem; */
+/* } */
+
+#image_container {
+    padding: 1rem 0;
+}
+
 .tab_button {
     flex: 1;
     padding: 0.25rem;
@@ -60,7 +76,6 @@ body {
     border: none;
     cursor: pointer;
     font-weight: bold;
-    max-width: 6rem;
 }
 
 .tab_button.active {
@@ -77,6 +92,9 @@ body {
 .tab_content.active {
     display: block;
 }
+.tab_content:not(.active) {
+    display: none !important;
+}
 
 .rename_container {
     display: none;
@@ -85,11 +103,6 @@ body {
 
 .rename_container.visible {
     display: block;
-}
-
-#result_tab {
-    display: grid;
-    gap: 1rem;
 }
 
 input, select, button {
@@ -102,3 +115,6 @@ input, select, button {
 select {
     max-width: 10rem;
 }
+
+button:hover  { filter: brightness(150%); }
+button:active { filter: brightness(50%); }

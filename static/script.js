@@ -18,24 +18,40 @@ jar.onUpdate(code => { globalThis.editor_content = code })
 /*================================================================================*/
 
 import * as db from './db.js'
-import * as tokenizer from './tokenizer.js'
 import * as svg from './svg.js'
+import * as port from './port.js'
+import * as tokenizer from './tokenizer.js'
 
-console.log(await db.get_all_image_names());
+globalThis.db = db
+globalThis.svg = svg
+globalThis.port = port
+globalThis.tokenizer = tokenizer
 
-const tokens = tokenizer.tokenizeReport(get_test_content());
-// console.log(JSON.stringify(tokens, null, 4));
+globalThis.tokens = []
+globalThis.svgs = []
+globalThis.result = []
 
-const svgs = svg.parse(tokens);
-// console.log(JSON.stringify(svgs, null, 4));
+;(globalThis.work = async function() {
+    globalThis.tokens = tokenizer.tokenizeReport(globalThis.editor_content);
+    // console.log(JSON.stringify(tokens, null, 4));
 
-const result = svgs.map(rs => svg.evaluate(rs));
-// console.log(JSON.stringify(result_svg, null, 4));
-for (let i = 0; i <= result.length; i += 1) {
-    document.getElementById("result_tab").innerHTML += result[i] + '\n'
-}
+    globalThis.svgs = await svg.parse(globalThis.tokens);
+    // console.log(JSON.stringify(svgs, null, 4));
 
-function _get_test_content() {
+    globalThis.result = globalThis.svgs.map(rs => svg.evaluate(rs));
+    // console.log(JSON.stringify(result_svg, null, 4));
+
+    document.getElementById("result_tab").innerHTML = '';
+    for (let i = 0; i < globalThis.result.length; i += 1) {
+        document.getElementById("result_tab").innerHTML += result[i] + '\n'
+    }
+})();
+
+setInterval(async () => {
+    await window.work();
+}, 1000)
+
+function get_test_content() {
     // {{{
     return `
 # Heading
@@ -51,21 +67,39 @@ And a list for good measure:
 .. Item 1.1
 . Item 2
 
-0 0123456789
-1 0123456789
-2 0123456789
-3 0123456789
-4 0123456789
-5 0123456789
-6 0123456789
-7 0123456789
-8 0123456789
-9 0123456789
+A paragraph, with some text.
+
+image::ded[Клиент‑серверная архитектура]
+
+# TODO
+
+## Code block
+
+\`\`\`gleam
+pub fn convert(doc: String) -> Result(Svg, String) {
+  let svg = asciidoc_to_svg(doc)
+  case svg {
+    Ok(data) -> save_to_file(data, "output.svg")
+    Error(reason) -> Error("Conversion failed: " <> reason)
+  }
+}
+\`\`\`
+
+## A Table
+
+[cols="1,2,2", options="header", bool-opt-1, bool-opt-2, key="value"]
+|===
+| ID | Название | Описание
+| 001 | Lorem Ipsum | Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+| 002 | Dolor Sit | Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+| 003 | Amet Consectetur | Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
+| 004 | Adipiscing Elit | Duis aute irure dolor in reprehenderit in voluptate velit esse.
+|===
 `
     // }}}
 }
 
-function get_test_content() {
+function _get_test_content() {
     // {{{
     return `
 #@ РЕФЕРАТ
@@ -236,29 +270,6 @@ function get_test_content() {
 - поддержка дополнительных форматов;
 - оптимизация производительности.
 
-# Code block
-
-\`\`\`gleam
-pub fn convert(doc: String) -> Result(Svg, String) {
-  let svg = asciidoc_to_svg(doc)
-  case svg {
-    Ok(data) -> save_to_file(data, "output.svg")
-    Error(reason) -> Error("Conversion failed: " <> reason)
-  }
-}
-\`\`\`
-
-# A Table
-
-[cols="1,2,2", options="header", bool-opt-1, bool-opt-2, key="value"]
-|===
-| ID | Название | Описание
-| 001 | Lorem Ipsum | Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-| 002 | Dolor Sit | Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-| 003 | Amet Consectetur | Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.
-| 004 | Adipiscing Elit | Duis aute irure dolor in reprehenderit in voluptate velit esse.
-|===
-
 #@ СПИСОК ИСТОЧНИКОВ И ЛИТЕРАТУРЫ
 
 . Asciidoc [Электронный ресурс]. – URL: https://asciidoc.org/ (дата обращения 09.12.2024).
@@ -282,24 +293,29 @@ pub fn convert(doc: String) -> Result(Svg, String) {
 
 // this code just neds to run after page load, i tried normally, but it didnt work.
 // web fucking sucks. vibe coding it is.
-new Promise((resolve, _) => {
-    document.addEventListener('DOMContentLoaded', () => {
-        const tab_buttons = document.querySelectorAll('.tab_button');
-        const tab_contents = document.querySelectorAll('.tab_content');
+;(function setup_listeners() {
+    const tab_buttons = document.querySelectorAll('.tab_button');
+    const tab_contents = document.querySelectorAll('.tab_content');
 
-        tab_buttons.forEach(button => {
-            button.addEventListener('click', () => {
-                const target_id = button.getAttribute('data-tab');
+    tab_buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            const target_id = button.getAttribute('data-tab');
 
-                // Remove active class from all buttons and contents
-                tab_buttons.forEach(btn => btn.classList.remove('active'));
-                tab_contents.forEach(tab => tab.classList.remove('active'));
+            // Remove active class from all buttons and contents
+            tab_buttons.forEach(btn => btn.classList.remove('active'));
+            tab_contents.forEach(tab => tab.classList.remove('active'));
 
-                // Activate selected tab and button
-                button.classList.add('active');
-                document.getElementById(target_id).classList.add('active');
-            });
+            // Activate selected tab and button
+            button.classList.add('active');
+            document.getElementById(target_id).classList.add('active');
         });
     });
-    resolve();
-});
+
+    const export_svg_btn = document.querySelector('#export_svg_btn')
+    const export_pdf_btn = document.querySelector('#export_pdf_btn')
+    const export_odt_btn = document.querySelector('#export_odt_btn')
+
+    export_svg_btn.addEventListener('click', port.export_svg);
+    export_pdf_btn.addEventListener('click', port.export_pdf);
+    export_odt_btn.addEventListener('click', port.export_odt);
+})();
