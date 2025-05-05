@@ -57,9 +57,47 @@
             <div id="result_tab" class="tab_content active"> </div>
 
             <div id="projects_tab" class="tab_content">
-                Here will be a list of all projects.
+                <!-- Authentication Section -->
+                <div id="auth_section">
+                    <h2>Login</h2>
+                    <form id="login_form" class="auth_form">
+                        <input type="text" id="login_username" placeholder="Username" required>
+                        <input type="password" id="login_password" placeholder="Password" required>
+                        <button type="submit">Login</button>
+                    </form>
 
-                Coming Soon (tm)
+                    <h2>Register</h2>
+                    <form id="register_form" class="auth_form">
+                        <input type="text" id="register_username" placeholder="Username" required>
+                        <input type="password" id="register_password" placeholder="Password" required>
+                        <button type="submit">Register</button>
+                    </form>
+                    <!-- Basic toggle hint - JS will improve this -->
+                    <p class="auth_toggle_hint">Need to register? Fill the form above.</p>
+                </div>
+
+                <!-- Logged In Status - Hidden by default -->
+                <div id="user_status" style="display: none;">
+                    <p>Logged in as: <span id="logged_in_username"></span></p>
+                    <button type="button" id="logout_button">Logout</button>
+                </div>
+
+                <!-- Project Management Section - Hidden by default -->
+                <div id="project_management_section" style="display: none;">
+                    <h2>Projects</h2>
+                    <button type="button" id="new_project_button">New Project</button>
+                    <button type="button" id="save_project_button">Save Current Project</button>
+                    <ul id="project_list">
+                        <!-- Project items will be added here by JS -->
+                        <!-- Example Structure (commented out):
+                        <li data-project-id="1">
+                        <span>Project Name Alpha</span>
+                        <button class="load_project_btn">Load</button>
+                        <button class="delete_project_btn">Delete</button>
+                        </li>
+                        -->
+                    </ul>
+                </div>
             </div>
         </div>
     </body>

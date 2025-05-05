@@ -1,60 +1,513 @@
-import {CodeJar} from './codejar/codejar.js'
-const editor = document.querySelector('#editor')
-globalThis.editor_content = get_test_content(); //'function foo() {\n\treturn "Hi"\n}'
+import { CodeJar } from './codejar/codejar.js';
+import * as db from './db.js';
+import * as svg from './svg.js';
+import * as port from './port.js';
+import * as tokenizer from './tokenizer.js';
 
-const highlight = editor => {
-    editor.innerHTML = hljs.highlight(editor.textContent, { language: 'markdown' }).value
+window.db        = db;
+window.svg       = svg;
+window.port      = port;
+window.tokenizer = tokenizer;
+
+// --- Global State ---
+window.editor_content = ''; // Start empty, load from project or default
+window.tokens = [];
+window.svgs = [];
+window.result = [];
+let currentProjectId = null;
+let currentProjectName = '';
+let isLoggedIn = false;
+let isWorking = false; // Debounce flag for window.work
+
+// --- DOM Elements ---
+const editorElement = document.querySelector('#editor');
+const resultTab = document.getElementById('result_tab');
+const projectsTab = document.getElementById('projects_tab');
+const authSection = document.getElementById('auth_section');
+const loginForm = document.getElementById('login_form');
+const registerForm = document.getElementById('register_form');
+const loginUsernameInput = document.getElementById('login_username');
+const loginPasswordInput = document.getElementById('login_password');
+const registerUsernameInput = document.getElementById('register_username');
+const registerPasswordInput = document.getElementById('register_password');
+const userStatusSection = document.getElementById('user_status');
+const loggedInUsernameSpan = document.getElementById('logged_in_username');
+const logoutButton = document.getElementById('logout_button');
+const projectManagementSection = document.getElementById('project_management_section');
+const newProjectButton = document.getElementById('new_project_button');
+const saveProjectButton = document.getElementById('save_project_button');
+const projectListUl = document.getElementById('project_list');
+const feedbackElement = document.createElement('div'); // Element for user feedback
+feedbackElement.id = 'feedback_message';
+feedbackElement.style.padding = '10px';
+feedbackElement.style.marginTop = '10px';
+feedbackElement.style.borderRadius = '3px';
+feedbackElement.style.display = 'none'; // Hidden by default
+projectsTab.prepend(feedbackElement); // Add feedback element at the top of the projects tab
+
+// --- UI Feedback ---
+function showFeedback(message, isError = false) {
+    feedbackElement.textContent = message;
+    feedbackElement.style.backgroundColor = isError ? '#8b0000' : '#006400'; // Dark red or dark green
+    feedbackElement.style.color = 'white';
+    feedbackElement.style.display = 'block';
+    // Automatically hide after a few seconds
+    setTimeout(() => {
+        feedbackElement.style.display = 'none';
+    }, isError ? 5000 : 3000); // Show errors longer
+}
+// Make globally accessible if db.js needs them
+function showError(msg) { showFeedback(msg, true); }
+function showSuccess(msg) { showFeedback(msg, false); }
+window.showError   = showError;
+window.showSuccess = showSuccess;
+
+// --- Code Editor Setup ---
+const highlight = function(editor) { editor.innerHTML = hljs.highlight(editor.textContent, { language: 'markdown' }).value; };
+
+const jar = CodeJar(editorElement, highlight, { tab: '    ' });
+
+jar.onUpdate(code => {
+    window.editor_content = code;
+    // TODO: Avoid triggering full SVG render on every keystroke by default.
+    // Maybe add a small delay or trigger manually/periodically.
+    // For now, rely on the interval timer or manual save/load triggers.
+});
+
+// Set initial content (e.g., empty or default)
+jar.updateCode(window.editor_content); // Initially empty
+
+// --- API Helper ---
+async function apiFetch(url, options = {}) {
+    const defaultOptions = {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+        },
+    };
+    const config = { ...defaultOptions, ...options };
+    config.headers = { ...defaultOptions.headers, ...options.headers };
+
+    if (config.body && typeof config.body !== 'string') {
+        config.body = JSON.stringify(config.body);
+    }
+
+    try {
+        const response = await fetch(url, config);
+
+        if (!response.ok) {
+            let errorBody;
+            try {
+                errorBody = await response.json();
+            } catch (e) {
+                // If response is not JSON
+                console.log("Response:", response)
+                errorBody = response.body;
+            }
+            const error = new Error(`HTTP error! Status: ${response.status}`);
+            error.status = response.status;
+            error.body = errorBody;
+            console.error(`API Fetch Error (${response.status}) for ${url}:`, errorBody);
+            throw error;
+        }
+
+        // Handle empty response body for 200/201/204 etc.
+        const contentType = response.headers.get("content-type");
+        if (response.status === 204 || !contentType || !contentType.includes("application/json")) {
+            return null; // Or return response directly if needed
+        }
+
+        return await response.json();
+
+    } catch (error) {
+        console.error(`Network or fetch error for ${url}:`, error);
+        // Don't re-throw if already an HTTP error from above
+        if (!error.status) {
+            throw new Error(`Network error: ${error.message}`);
+        }
+        throw error; // Re-throw the augmented HTTP error
+    }
 }
 
-const jar = CodeJar(editor, highlight, {
-    tab: '    ',
-})
 
-jar.updateCode(globalThis.editor_content)
-jar.onUpdate(code => { globalThis.editor_content = code })
-//jar.updateCode(localStorage.getItem('code'))
-//jar.onUpdate(code => { localStorage.setItem('code', code) })
-
-/*================================================================================*/
-
-import * as db from './db.js'
-import * as svg from './svg.js'
-import * as port from './port.js'
-import * as tokenizer from './tokenizer.js'
-
-globalThis.db = db
-globalThis.svg = svg
-globalThis.port = port
-globalThis.tokenizer = tokenizer
-
-globalThis.tokens = []
-globalThis.svgs = []
-globalThis.result = []
-
-;(globalThis.work = async function() {
-    globalThis.tokens = tokenizer.tokenizeReport(globalThis.editor_content);
-    // console.log(JSON.stringify(tokens, null, 4));
-
-    globalThis.svgs = await svg.parse(globalThis.tokens);
-    // console.log(JSON.stringify(svgs, null, 4));
-
-    globalThis.result = globalThis.svgs.map(rs => svg.evaluate(rs));
-    // console.log(JSON.stringify(result_svg, null, 4));
-
-    document.getElementById("result_tab").innerHTML = '';
-    for (let i = 0; i < globalThis.result.length; i += 1) {
-        document.getElementById("result_tab").innerHTML += result[i] + '\n'
+// --- Authentication ---
+async function handleLogin(event) {
+    event.preventDefault();
+    const username = loginUsernameInput.value;
+    const password = loginPasswordInput.value;
+    if (!username || !password) {
+        showError("Please enter username and password.");
+        return;
     }
-})();
+    try {
+        await apiFetch('/login', {
+            method: 'POST',
+            body: { username, password },
+        });
+        isLoggedIn = true;
+        updateAuthUI(username);
+        await fetchAndDisplayProjects();
+        showSuccess(`Logged in as ${username}`);
+        // Optionally load the first project or clear the editor
+        resetEditorAndDb(); // Clear current state after login
+    } catch (error) {
+        isLoggedIn = false;
+        updateAuthUI();
+        if (error.status === 401) {
+            showError("Invalid username or password.");
+        } else {
+            showError(`Login failed: ${error.message}`);
+        }
+    }
+}
 
-setInterval(async () => {
-    await window.work();
-}, 1000)
+async function handleRegister(event) {
+    event.preventDefault();
+    const username = registerUsernameInput.value;
+    const password = registerPasswordInput.value;
+    if (!username || !password) {
+        showError("Please enter username and password.");
+        return;
+    }
+    if (password.length < 6) { // Example: Basic password length check
+        showError("Password must be at least 6 characters long.");
+        return;
+    }
+    try {
+        await apiFetch('/register', {
+            method: 'POST',
+            body: { username, password },
+        });
+        showSuccess("Registration successful! Please log in.");
+        // Clear registration form
+        registerForm.reset();
+        // Optionally switch focus to login form
+        loginUsernameInput.focus();
+    } catch (error) {
+        if (error.status === 409) { // Conflict - username taken
+            showError("Username already taken. Please choose another.");
+        } else {
+            showError(`Registration failed: ${error.message}`);
+        }
+    }
+}
+
+async function handleLogout() {
+    try {
+        await apiFetch('/logout', { method: 'POST' });
+        isLoggedIn = false;
+        currentProjectId = null;
+        currentProjectName = '';
+        updateAuthUI();
+        resetEditorAndDb();
+        showSuccess("Logged out successfully.");
+    } catch (error) {
+        showError(`Logout failed: ${error.message}`);
+        // Still update UI assuming logout happened or session is invalid
+        isLoggedIn = false;
+        updateAuthUI();
+        resetEditorAndDb();
+    }
+}
+
+function updateAuthUI(username = null) {
+    if (isLoggedIn && username) {
+        authSection.style.display = 'none';
+        userStatusSection.style.display = 'flex'; // Use flex to match CSS
+        projectManagementSection.style.display = 'block';
+        loggedInUsernameSpan.textContent = username;
+    } else {
+        authSection.style.display = 'block';
+        userStatusSection.style.display = 'none';
+        projectManagementSection.style.display = 'none';
+        loggedInUsernameSpan.textContent = '';
+        projectListUl.innerHTML = ''; // Clear project list on logout
+    }
+}
+
+async function checkLoginStatus() {
+    try {
+        // Attempt to fetch projects. If successful, user is logged in.
+        // We don't need the project data here, just the success/failure.
+        await apiFetch('/api/projects'); // Uses GET by default
+        isLoggedIn = true;
+        // Need to know the username - could add a dedicated '/api/userinfo' endpoint
+        // or fetch projects and infer from potential ownership (less ideal)
+        // For now, show generic logged-in state until first project load or specific user info endpoint
+        updateAuthUI("User"); // Placeholder username
+        await fetchAndDisplayProjects();
+        console.info("User is logged in.");
+    } catch (error) {
+        if (error.status === 401) {
+            // User is not logged in
+            isLoggedIn = false;
+            updateAuthUI();
+            console.info("User is not logged in.");
+        } else {
+            // Other error (network, server issue)
+            showError(`Failed to check login status: ${error.message}`);
+            isLoggedIn = false;
+            updateAuthUI();
+        }
+    }
+}
+
+function resetEditorAndDb() {
+    currentProjectId = null;
+    currentProjectName = '';
+    jar.updateCode(''); // Clear editor
+    db.clearAllImages().catch(err => showError(`Error clearing local images: ${err.message}`));
+    db.populate_image_select(); // Update image dropdown (will be empty)
+    resultTab.innerHTML = ''; // Clear result preview
+}
+
+
+// --- Project Management ---
+async function fetchAndDisplayProjects() {
+    if (!isLoggedIn) return;
+    try {
+        const projects = await apiFetch('/api/projects');
+        displayProjectList(projects || []);
+    } catch (error) {
+        showError(`Failed to fetch projects: ${error.message}`);
+        // If unauthorized, log out locally
+        if (error.status === 401) {
+            isLoggedIn = false;
+            updateAuthUI();
+            resetEditorAndDb();
+        }
+    }
+}
+
+function displayProjectList(projects) {
+    projectListUl.innerHTML = ''; // Clear existing list
+    if (!projects || projects.length === 0) {
+        projectListUl.innerHTML = '<li>No projects found.</li>';
+        return;
+    }
+    projects.forEach(project => {
+        const li = document.createElement('li');
+        li.dataset.projectId = project.id; // Store ID on the element
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = project.name;
+        li.appendChild(nameSpan);
+
+        const loadButton = document.createElement('button');
+        loadButton.textContent = 'Load';
+        loadButton.classList.add('load_project_btn'); // Add class for event delegation
+        li.appendChild(loadButton);
+
+        // TODO: Add Delete Button functionality if needed
+        // const deleteButton = document.createElement('button');
+        // deleteButton.textContent = 'Delete';
+        // deleteButton.classList.add('delete_project_btn');
+        // li.appendChild(deleteButton);
+
+        projectListUl.appendChild(li);
+    });
+}
+
+async function loadProject(projectId) {
+    if (!projectId) return;
+    showFeedback("Loading project..."); // Show loading indicator
+    try {
+        // 1. Fetch project details (name, body, image names)
+        const projectData = await apiFetch(`/api/projects/${projectId}`);
+        if (!projectData) throw new Error("Project data not received.");
+
+        currentProjectId = projectId;
+        currentProjectName = projectData.name;
+        jar.updateCode(projectData.body || ''); // Update editor content
+
+        // 2. Clear local IndexedDB images
+        await db.clearAllImages();
+
+        // 3. Fetch and store images
+        if (projectData.image_names && projectData.image_names.length > 0) {
+            const imagePromises = projectData.image_names.map(async (imageName) => {
+                try {
+                    const response = await fetch(`/api/projects/${projectId}/image/${encodeURIComponent(imageName)}`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch image ${imageName}: ${response.statusText}`);
+                    }
+                    const blob = await response.blob();
+                    await db.store_image({ name: imageName, blob: blob });
+                    console.info(`Loaded and stored image: ${imageName}`);
+                } catch (imgError) {
+                    console.error(`Error loading image ${imageName}:`, imgError);
+                    showError(`Could not load image: ${imageName}`); // Notify user about specific image failure
+                }
+            });
+            await Promise.all(imagePromises); // Wait for all images to be fetched and stored
+        }
+
+        // 4. Update UI (image select dropdown)
+        await db.populate_image_select();
+
+        // 5. Trigger SVG re-render
+        await window.work(); // Ensure work() is awaited if it's async
+
+        showSuccess(`Project "${projectData.name}" loaded.`);
+
+    } catch (error) {
+        showError(`Failed to load project ${projectId}: ${error.message}`);
+        currentProjectId = null; // Reset state on failure
+        currentProjectName = '';
+        // Optionally clear editor/DB again on load failure
+        // resetEditorAndDb();
+    } finally {
+        // Hide loading indicator if one was shown explicitly
+    }
+}
+
+async function saveProject() {
+    if (!isLoggedIn) {
+        showError("You must be logged in to save.");
+        return;
+    }
+    if (!currentProjectId) {
+        showError("No project loaded. Load a project or create a new one before saving.");
+        return;
+    }
+
+    showFeedback("Saving project...");
+
+    try {
+        // 1. Get current editor content
+        const bodyContent = window.editor_content;
+
+        // 2. Get all images from local IndexedDB
+        const localImages = await db.getAllImages();
+
+        // 3. Convert image blobs to Base64
+        const imagesPayload = [];
+        const conversionPromises = localImages.map(async (img) => {
+            try {
+                const base64 = await db.blobToBase64(img.blob);
+                imagesPayload.push({ name: img.name, blob_base64: base64 });
+            } catch (conversionError) {
+                console.error(`Error converting blob to base64 for ${img.name}:`, conversionError);
+                // Decide how to handle: skip image, show error, etc.
+                // Skipping for now, but showing an error is better.
+                showError(`Could not process image "${img.name}" for saving.`);
+            }
+        });
+        await Promise.all(conversionPromises); // Wait for all conversions
+
+        // 4. Send PUT request
+        const payload = {
+            name: currentProjectName, // Send the current name back
+            body: bodyContent,
+            images: imagesPayload,
+        };
+
+        await apiFetch(`/api/projects/${currentProjectId}`, {
+            method: 'PUT',
+            body: payload,
+        });
+
+        showSuccess(`Project "${currentProjectName}" saved successfully.`);
+
+    } catch (error) {
+        showError(`Failed to save project: ${error.message}`);
+        if (error.status === 401) { // Handle session expiry during save
+            isLoggedIn = false;
+            updateAuthUI();
+            resetEditorAndDb();
+        }
+    }
+}
+
+async function handleNewProject() {
+    if (!isLoggedIn) {
+        showError("You must be logged in to create a project.");
+        return;
+    }
+    const projectName = prompt("Enter a name for the new project:", "New Project");
+    if (!projectName) {
+        showFeedback("Project creation cancelled.");
+        return;
+    }
+
+    showFeedback("Creating new project...");
+
+    try {
+        const newProject = await apiFetch('/api/projects', {
+            method: 'POST',
+            body: {
+                name: projectName,
+                body: "...", // Start with default content?
+            },
+        });
+
+        if (!newProject || !newProject.projectId) {
+            throw new Error("Server did not return a valid project ID.");
+        }
+
+        showSuccess(`Project "${newProject.name}" created.`);
+
+        // Automatically load the new project
+        await loadProject(newProject.projectId);
+
+        // Refresh the project list
+        await fetchAndDisplayProjects();
+
+    } catch (error) {
+        if (error.status === 409) {
+            showError(`Project name "${projectName}" already exists.`);
+        } else {
+            showError(`Failed to create project: ${error.message}`);
+        }
+        if (error.status === 401) { // Handle session expiry
+            isLoggedIn = false;
+            updateAuthUI();
+            resetEditorAndDb();
+        }
+    }
+}
+
+
+// --- SVG Rendering ---
+async function work() {
+    // Debounce or prevent concurrent execution
+    if (isWorking) return;
+    isWorking = true;
+    // console.log("Starting work...");
+
+    try {
+        window.tokens = tokenizer.tokenizeReport(window.editor_content || '');
+        window.svgs = await svg.parse(window.tokens); // parse is async due to images
+        window.result = window.svgs.map(rs => svg.evaluate(rs));
+
+        if (resultTab) {
+            resultTab.innerHTML = ''; // Clear previous results
+            for (let i = 0; i < window.result.length; i += 1) {
+                // Sanitize SVG slightly before adding? Basic check:
+                if (typeof window.result[i] === 'string' && window.result[i].trim().startsWith('<svg')) {
+                    resultTab.innerHTML += window.result[i] + '\n';
+                } else {
+                    console.warn("Skipping invalid SVG result for page", i);
+                }
+            }
+        } else {
+            console.error("Result tab element not found!");
+        }
+    } catch (error) {
+        console.error("Error during SVG generation work:", error);
+        showError(`SVG Rendering Error: ${error.message}`);
+        if (resultTab) resultTab.innerHTML = '<p style="color: red;">Error generating preview.</p>';
+    } finally {
+        // console.log("Finished work.");
+        isWorking = false; // Release debounce flag
+    }
+};
+window.work = work;
 
 function get_test_content() {
     // {{{
-    return `
-# Heading
+    return `# Heading
 
 A paragraph, with some text.
 
@@ -77,11 +530,11 @@ image::ded[Клиент‑серверная архитектура]
 
 \`\`\`gleam
 pub fn convert(doc: String) -> Result(Svg, String) {
-  let svg = asciidoc_to_svg(doc)
-  case svg {
-    Ok(data) -> save_to_file(data, "output.svg")
-    Error(reason) -> Error("Conversion failed: " <> reason)
-  }
+let svg = asciidoc_to_svg(doc)
+case svg {
+Ok(data) -> save_to_file(data, "output.svg")
+Error(reason) -> Error("Conversion failed: " <> reason)
+}
 }
 \`\`\`
 
@@ -291,31 +744,68 @@ function _get_test_content() {
     // }}}
 }
 
-// this code just neds to run after page load, i tried normally, but it didnt work.
-// web fucking sucks. vibe coding it is.
+// --- Initial Setup & Event Listeners ---
 ;(function setup_listeners() {
+    console.log("DOM Loaded. Initializing...");
+
+    // Setup Tab Switching Logic (keep existing)
     const tab_buttons = document.querySelectorAll('.tab_button');
     const tab_contents = document.querySelectorAll('.tab_content');
-
     tab_buttons.forEach(button => {
         button.addEventListener('click', () => {
             const target_id = button.getAttribute('data-tab');
-
-            // Remove active class from all buttons and contents
             tab_buttons.forEach(btn => btn.classList.remove('active'));
             tab_contents.forEach(tab => tab.classList.remove('active'));
-
-            // Activate selected tab and button
             button.classList.add('active');
-            document.getElementById(target_id).classList.add('active');
+            const targetTab = document.getElementById(target_id);
+            if (targetTab) targetTab.classList.add('active');
         });
     });
 
-    const export_svg_btn = document.querySelector('#export_svg_btn')
-    const export_pdf_btn = document.querySelector('#export_pdf_btn')
-    const export_odt_btn = document.querySelector('#export_odt_btn')
+    // Setup Export Buttons (keep existing)
+    const export_svg_btn = document.querySelector('#export_svg_btn');
+    const export_pdf_btn = document.querySelector('#export_pdf_btn');
+    const export_odt_btn = document.querySelector('#export_odt_btn');
+    export_svg_btn?.addEventListener('click', port.export_svg);
+    export_pdf_btn?.addEventListener('click', port.export_pdf);
+    export_odt_btn?.addEventListener('click', port.export_odt);
 
-    export_svg_btn.addEventListener('click', port.export_svg);
-    export_pdf_btn.addEventListener('click', port.export_pdf);
-    export_odt_btn.addEventListener('click', port.export_odt);
+    // Authentication Listeners
+    loginForm?.addEventListener('submit', handleLogin);
+    registerForm?.addEventListener('submit', handleRegister);
+    logoutButton?.addEventListener('click', handleLogout);
+
+    // Project Management Listeners
+    newProjectButton?.addEventListener('click', handleNewProject);
+    saveProjectButton?.addEventListener('click', saveProject);
+
+    // Project List Listener (Event Delegation)
+    projectListUl?.addEventListener('click', (event) => {
+        if (event.target.classList.contains('load_project_btn')) {
+            const listItem = event.target.closest('li');
+            if (listItem && listItem.dataset.projectId) {
+                const projectId = parseInt(listItem.dataset.projectId, 10);
+                if (!isNaN(projectId)) {
+                    loadProject(projectId);
+                }
+            }
+        }
+        // Add handling for delete buttons here if implemented
+        // if (event.target.classList.contains('delete_project_btn')) { ... }
+    });
+
+    // Check login status when the app loads
+    checkLoginStatus();
+
+    // Initial SVG render
+    jar.updateCode(get_test_content());
+    window.work();
+
+    // Interval timer for automatic SVG refresh
+    setInterval(async () => {
+        // TODO: check whether editor has changed
+        await window.work();
+    }, 1000);
+
+    console.log("Initialization complete.");
 })();

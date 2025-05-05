@@ -4,10 +4,8 @@ html, body {
     top: 0;
     width: 100%;
     height: 100%;
-    margin: 0;
-    padding: 0;
     overflow: hidden;
-    font-family: sans-serif;
+    font-family: sans-serif; /* Kept as specific app choice */
 }
 
 body {
@@ -19,7 +17,6 @@ body {
 
 .body_container {
     background: #202020;
-    box-sizing: border-box;
 }
 
 #editor_container {
@@ -32,10 +29,10 @@ body {
     width: 100%;
     height: 100%;
     background: #101010;
-    font-family: monospace;
+    font-family: monospace; /* Specific font choice */
     color: #e0e0e0;
     padding: 1rem;
-    box-sizing: border-box;
+    outline: none; /* Remove focus outline if desired */
 }
 
 #right_panel {
@@ -49,20 +46,24 @@ body {
 #tab_bar {
     display: flex;
     background: #303030;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid #444; /* Adds border-bottom-width back */
+    padding: 0.5rem;
+    gap: 0.5rem;
 }
 
 #result_tab {
     display: grid;
     justify-content: center;
     gap: 1rem;
+    padding-right: 10px;
+    overflow: scroll;
 }
 
-/* #port_tab { */
-/*     display: flex; */
-/*     flex-direction: column; */
-/*     gap: 1rem; */
-/* } */
+#result_tab svg {
+    /* Style SVGs if needed, e.g., add border */
+    border: 1px solid #555; /* Adds border-width back */
+    background-color: white; /* Ensure white background for visibility */
+}
 
 #image_container {
     padding: 1rem 0;
@@ -73,9 +74,9 @@ body {
     padding: 0.25rem;
     background: #303030;
     color: #e0e0e0;
-    border: none;
+    /* border: none; <- Redundant due to reset */
     cursor: pointer;
-    font-weight: bold;
+    font-weight: bold; /* Specific style */
 }
 
 .tab_button.active {
@@ -83,15 +84,30 @@ body {
 }
 
 .tab_content {
-    display: none;
+    display: none; /* Default state */
     padding: 1rem;
     overflow-y: auto;
     flex: 1;
+    /* Custom scrollbar styling (optional) */
+    scrollbar-width: thin;
+    scrollbar-color: #666 #333;
+}
+/* For Webkit browsers */
+.tab_content::-webkit-scrollbar {
+    width: 8px;
+}
+.tab_content::-webkit-scrollbar-track {
+    background: #333;
+}
+.tab_content::-webkit-scrollbar-thumb {
+    background-color: #666;
+    border-radius: 4px;
 }
 
 .tab_content.active {
     display: block;
 }
+
 .tab_content:not(.active) {
     display: none !important;
 }
@@ -105,16 +121,143 @@ body {
     display: block;
 }
 
+/* General form styling */
+form {
+    margin-bottom: 1rem; /* Specific spacing */
+}
+
+h1, h2 {
+    /* Specific app styling below */
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #555; /* Adds border */
+    padding-bottom: 0.25rem;
+    font-size: 1.2em; /* Explicitly set desired size */
+    font-weight: bold; /* Explicitly set desired weight */
+}
+h1:first-child, h2:first-child {
+    margin-top: 0;
+}
+
+
 input, select, button {
-    background: #303030;
+    /* Specific app styling below */
+    background: #383838;
     color: #e0e0e0;
-    outline: inset 1px solid #444;
-    padding: 0.5rem;
+    border: 1px solid #555; /* Adds border */
+    padding: 0.5rem; /* Specific padding */
+    border-radius: 3px;
+}
+input[type="text"], input[type="password"], input[type="file"] {
+    min-width: 150px;
 }
 
 select {
-    max-width: 10rem;
+    max-width: 15rem;
 }
 
-button:hover  { filter: brightness(150%); }
-button:active { filter: brightness(50%); }
+button {
+    transition: filter 0.1s ease;
+    /* Specific app styling */
+    background: #383838; /* Override reset transparent background */
+    border: 1px solid #555; /* Override reset border */
+    padding: 0.5rem; /* Override reset padding */
+}
+
+button:hover  { filter: brightness(120%); }
+button:active { filter: brightness(80%); }
+
+/* Projects Tab Specific Styles */
+#projects_tab h2 {
+    margin-top: 1.5rem;
+}
+#projects_tab h2:first-child {
+    margin-top: 0;
+}
+
+.auth_form {
+    display: flex;
+    flex-direction: column;
+    max-width: 300px; /* Limit form width */
+    margin-bottom: 1.5rem;
+}
+.auth_form > * {
+    margin: 0.25rem;
+}
+/* .auth_form input { */
+/*     padding */
+/* } */
+/* .auth_form button { */
+/* } */
+
+.auth_toggle_hint {
+    font-size: 0.9em;
+    color: #aaa;
+    margin-top: -1rem; /* Pull closer to forms */
+    margin-bottom: 1.5rem;
+}
+
+#user_status {
+    padding: 0.5rem;
+    margin-bottom: 1.5rem;
+    background-color: #2a2a2a;
+    border: 1px solid #444; /* Adds border */
+    border-radius: 3px;
+    display: flex; /* Use flex for layout */
+    justify-content: space-between; /* Space out text and button */
+    align-items: center; /* Vertically align items */
+    max-width: 400px;
+}
+#user_status p {
+    /* margin: 0; <- Redundant, handled by reset */
+}
+#user_status #logout_button {
+    /* margin: 0; <- Redundant, handled by reset */
+    padding: 0.3rem 0.6rem; /* Smaller padding */
+}
+
+#project_management_section {
+    margin-top: 1rem;
+}
+
+#project_list {
+    margin-top: 1rem; /* Specific spacing */
+}
+
+#project_list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem;
+    margin-bottom: 0.5rem;
+    background-color: #2c2c2c;
+    border: 1px solid #444; /* Adds border */
+    border-radius: 3px;
+}
+
+#project_list li span {
+    flex-grow: 1; /* Allow name to take available space */
+    margin-right: 1rem; /* Space between name and buttons */
+    overflow: hidden; /* Prevent long names from breaking layout */
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#project_list li button {
+    margin: 0 0 0 0.3rem; /* Margin only on the left of buttons */
+    padding: 0.3rem 0.6rem; /* Smaller padding */
+    flex-shrink: 0; /* Prevent buttons from shrinking */
+}
+
+#new_project_button, #save_project_button {
+    margin-right: 0.5rem;
+}
+
+#feedback_message {
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+}
+
+/* Turn off all italics */
+/* .hljs-comment, .hljs-quote, .hljs-emphasis { font-style: normal !important; } */

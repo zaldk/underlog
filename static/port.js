@@ -1,5 +1,3 @@
-// === Add these helper functions (potentially in a new 'exportUtils.js' or within your main script) ===
-
 /**
  * Converts an image URL (especially blob URLs) to a JPEG Data URI using a canvas.
  * @param {string} url - The URL of the image (e.g., a blob: URL from IMAGE_URL_CACHE).

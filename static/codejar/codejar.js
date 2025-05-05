@@ -452,7 +452,8 @@ export function CodeJar(editor, highlight, opt = {}) {
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
+            .replace(/'/g, '&#039;')
+            .replace(/\n/g, '<br>');
         document.execCommand('insertHTML', false, text);
     }
     function debounce(cb, wait) {

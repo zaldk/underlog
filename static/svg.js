@@ -108,13 +108,13 @@ export const IMAGE_URL_CACHE = {};    // Stores Blob URLs: { name: string }
  * cannot be found, loaded, or dimensions determined.
  *
  * @param {string} name - The name of the image (key in IndexedDB).
- * @returns {Promise<[number, number]>} A promise resolving to [width, height] tuple. Returns [0, 0] on failure.
+ * @returns {Promise<[number, number]>} A promise resolving to [width, height] tuple. Returns null on failure.
  */
-async function get_image_height(name) {
+export async function get_image_height(name) {
     // Ensure name is valid
     if (!name) {
         //console.warn("get_image_height called with invalid name.");
-        return [0, 0];
+        return null;
     }
 
     const cached_entry = IMAGE_HEIGHT_CACHE[name];
@@ -122,7 +122,7 @@ async function get_image_height(name) {
     // 1. Check cache: If dimensions array exists, return it.
     if (Array.isArray(cached_entry)) {
         // console.log(`Dimension cache hit (Array) for ${name}:`, cached_entry);
-        return cached_entry; // Return cached dimensions or [0, 0] error state
+        return cached_entry; // Return cached dimensions or null error state
     }
 
     // 2. Check cache: If a promise exists, await it.
@@ -135,10 +135,10 @@ async function get_image_height(name) {
         } catch (error) {
             console.error(`Error awaiting cached promise for image "${name}":`, error);
             // Ensure cache reflects error state if the awaited promise failed critically
-            if (!(Array.isArray(IMAGE_HEIGHT_CACHE[name]) && IMAGE_HEIGHT_CACHE[name][0] === 0)) {
-                IMAGE_HEIGHT_CACHE[name] = [0, 0];
+            if (!Array.isArray(IMAGE_HEIGHT_CACHE[name])) {
+                IMAGE_HEIGHT_CACHE[name] = null;
             }
-            return [0, 0]; // Return zero-values on error
+            return null; // Return zero-values on error
         }
     }
 
@@ -154,7 +154,7 @@ async function get_image_height(name) {
             if (!stored_image || !stored_image.blob) {
                 // Image not found in DB is not necessarily an *error*, but results in 0 dimensions
                 //console.warn(`Image "${name}" not found in DB or has no blob.`);
-                resolve([0, 0]); // Resolve with zero-dimensions
+                resolve(null); // Resolve with zero-dimensions
                 return;
             }
 
@@ -183,7 +183,7 @@ async function get_image_height(name) {
                     delete IMAGE_URL_CACHE[name];
                 }
                 img.remove();
-                resolve([0, 0]); // Resolve with zero-dimensions on image load error
+                resolve(null); // Resolve with zero-dimensions on image load error
             };
             img.src = blob_url;
 
@@ -194,7 +194,7 @@ async function get_image_height(name) {
                 URL.revokeObjectURL(blob_url);
                 delete IMAGE_URL_CACHE[name];
             }
-            resolve([0, 0]); // Resolve with zero-dimensions on DB or other errors
+            resolve(null); // Resolve with zero-dimensions on DB or other errors
         }
     });
 
@@ -204,10 +204,10 @@ async function get_image_height(name) {
     try {
         // Await the loading promise we just created.
         const final_dimensions = await loading_promise;
-        // Cache the final result (which could be [w,h] or [0,0])
+        // Cache the final result (which could be [w,h] or null)
         IMAGE_HEIGHT_CACHE[name] = final_dimensions;
-        // If dimensions are [0,0], potentially remove the blob URL as it might be invalid/unusable
-        if (final_dimensions[0] === 0 && IMAGE_URL_CACHE[name]) {
+        // If dimensions are null, potentially remove the blob URL as it might be invalid/unusable
+        if (final_dimensions == null && IMAGE_URL_CACHE[name]) {
             //console.warn(`Image "${name}" resulted in [0,0] dimensions, removing potentially invalid blob URL from cache.`);
             URL.revokeObjectURL(IMAGE_URL_CACHE[name]);
             delete IMAGE_URL_CACHE[name];
@@ -217,13 +217,13 @@ async function get_image_height(name) {
         // This catch is less likely to be hit if the promise always resolves,
         // but good for robustness in case of unexpected promise rejection.
         console.error(`Unexpected error awaiting image load promise for "${name}":`, error);
-        IMAGE_HEIGHT_CACHE[name] = [0, 0]; // Ensure cache reflects error state
+        IMAGE_HEIGHT_CACHE[name] = null; // Ensure cache reflects error state
         // Clean up potential URL cache entry
         if (IMAGE_URL_CACHE[name]) {
             try { URL.revokeObjectURL(IMAGE_URL_CACHE[name]); } catch(e){}
             delete IMAGE_URL_CACHE[name];
         }
-        return [0, 0];
+        return null;
     }
 }
 
@@ -449,7 +449,7 @@ export async function parse(nodes) {
                 const cached_url = IMAGE_URL_CACHE[name];
                 if (cached_url) {
                     image_href = cached_url;
-                } else if (dimensions[0] > 0) {
+                } else if (Array.isArray(dimensions) && dimensions[0] > 0) {
                     // If dimensions were loaded but URL somehow missing, log error
                     console.error(`Dimensions loaded for image "${name}" but Blob URL is missing from cache.`);
                     image_href = '#error-missing-url'; // Indicate an error state
