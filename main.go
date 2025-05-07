@@ -6,8 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -26,6 +30,7 @@ const (
 	staticDir          = "./static"
 	userIDContextKey   = "userID" // Key for storing user ID in request context
 	defaultProjectName = "Untitled Project"
+	pdfTempDirPrefix   = "underlog-pdf-"
 )
 
 var (
@@ -72,6 +77,11 @@ type UpdateProjectRequest struct {
 type ProjectUpdateImage struct {
 	Name       string `json:"name"`
 	BlobBase64 string `json:"blob_base64,omitempty"` // Base64 encoded blob for new/updated images
+}
+
+// PDFRequest struct for decoding the incoming JSON for PDF generation
+type PDFRequest struct {
+	Input string `json:"input"` // Expects SVG content here
 }
 
 // --- Database Initialization ---
@@ -273,11 +283,122 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Logout successful"})
 }
 
-// POST /pdf (Public)
+// POST /pdf (Public) - Rewritten PDF Handler
 func pdfHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement actual PDF generation logic
-	log.Println("PDF endpoint called (not implemented)")
-	http.Error(w, "PDF generation not implemented", http.StatusNotImplemented)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 1. Read and decode the JSON request body
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Error reading PDF request body: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+
+	var pdfReq PDFRequest
+	if err := json.Unmarshal(bodyBytes, &pdfReq); err != nil {
+		log.Printf("Error decoding PDF request JSON: %v. Body: %s", err, string(bodyBytes))
+		http.Error(w, "Invalid JSON payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if pdfReq.Input == "" {
+		log.Println("PDF request received with empty SVG input")
+		http.Error(w, "SVG input is required", http.StatusBadRequest)
+		return
+	}
+
+	log.Println("Received PDF generation request, creating temp directory...")
+
+	// 2. Create a temporary directory
+	tempDir, err := os.MkdirTemp("", pdfTempDirPrefix)
+	if err != nil {
+		log.Printf("Failed to create temporary directory: %v", err)
+		http.Error(w, "Failed to process request (temp dir)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Temporary directory created: %s", tempDir)
+	defer func() {
+		log.Printf("Cleaning up temporary directory: %s", tempDir)
+		if err := os.RemoveAll(tempDir); err != nil {
+			log.Printf("Error cleaning up temporary directory %s: %v", tempDir, err)
+		}
+	}()
+
+	// 3. Write the SVG input to a file in the temp directory
+	svgFilePath := filepath.Join(tempDir, "underlog.svg")
+	if err := os.WriteFile(svgFilePath, []byte(pdfReq.Input), 0644); err != nil {
+		log.Printf("Failed to write SVG to temporary file %s: %v", svgFilePath, err)
+		http.Error(w, "Failed to process request (write SVG)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("SVG content written to %s", svgFilePath)
+
+	// 4. Execute the bash scripts sequentially
+
+	// Script 1: awk to split SVG
+	awkCmd := `awk '/<svg/{n++} n{print > "input_" n ".svg"}' underlog.svg`
+	log.Printf("Executing awk command in %s: %s", tempDir, awkCmd)
+	cmd1 := exec.Command("bash", "-c", awkCmd)
+	cmd1.Dir = tempDir
+	output1, err := cmd1.CombinedOutput()
+	if err != nil {
+		log.Printf("Error executing awk command: %v\nOutput: %s", err, string(output1))
+		http.Error(w, "Failed to process SVG (split step)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("awk command successful.\n")
+
+	// Script 2: svg2pdf loop
+	svg2pdfCmd := `for file in input_*.svg; do svg2pdf "$file" "${file%.svg}.pdf"; done`
+	log.Printf("Executing svg2pdf loop in %s: %s", tempDir, svg2pdfCmd)
+	cmd2 := exec.Command("bash", "-c", svg2pdfCmd)
+	cmd2.Dir = tempDir
+	output2, err := cmd2.CombinedOutput()
+	if err != nil {
+		log.Printf("Error executing svg2pdf loop: %v\nOutput: %s", err, string(output2))
+		http.Error(w, "Failed to process SVG (conversion step)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("svg2pdf loop successful.\n")
+
+	// Script 3: gs to combine PDFs
+	gsCmd := `gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.5 -dPDFSETTINGS=/default -dNOPAUSE -dQUIET -dBATCH -dDetectDuplicateImages -dCompressFonts=true -r150 -sOutputFile=underlog.pdf $(printf '%s\n' input_*.pdf | sort -V | tr '\n' ' ')`
+	log.Printf("Executing gs command in %s: %s", tempDir, gsCmd)
+	cmd3 := exec.Command("bash", "-c", gsCmd)
+	cmd3.Dir = tempDir
+	output3, err := cmd3.CombinedOutput()
+	if err != nil {
+		log.Printf("Error executing gs command: %v\nOutput: %s", err, string(output3))
+		http.Error(w, "Failed to process SVG (combine step)", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("gs command successful.\n")
+
+	// 5. Read the resulting underlog.pdf
+	pdfFilePath := filepath.Join(tempDir, "underlog.pdf")
+	pdfBytes, err := os.ReadFile(pdfFilePath)
+	if err != nil {
+		log.Printf("Failed to read generated PDF file %s: %v", pdfFilePath, err)
+		http.Error(w, "Failed to retrieve generated PDF", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Successfully generated and read %s (%d bytes)", pdfFilePath, len(pdfBytes))
+
+	// 6. Send the PDF to the client
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", "underlog.pdf"))
+	w.Header().Set("Content-Length", strconv.Itoa(len(pdfBytes)))
+	w.WriteHeader(http.StatusOK) // Or http.StatusCreated if you prefer
+	_, err = w.Write(pdfBytes)
+	if err != nil {
+		log.Printf("Error writing PDF response to client: %v", err)
+		// Client connection might have closed, not much to do here
+	}
 }
 
 // POST /odt (Public)

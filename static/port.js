@@ -147,6 +147,7 @@ export async function get_final_svg() {
 
         const svg_pages_imaged = await Promise.all(svg_pages.map(async s => await embed_images_as_data_uris(s)));
         const final_svg = svg_pages_imaged.join('\n\n');
+
         return final_svg;
     } catch (error) {
         console.error("SVG Export failed:", error);

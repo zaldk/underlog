@@ -81,7 +81,14 @@ export function evaluate(svg) {
             for (let j = 0; j < attrs.length; j++) {
                 result += ` ${attrs[j][0]}="${attrs[j][1]}"`
             }
-            result += `>${child.text}</text>\n`
+            result += `>${
+                child.text
+                .replaceAll(/&/g, '&amp;')
+                .replaceAll(/</g, '&lt;')
+                .replaceAll(/>/g, '&gt;')
+                .replaceAll(/"/g, '&quot;')
+                .replaceAll(/'/g, '&#039;')
+            }</text>\n`
         } else if (child.type === "image") {
             result += `<image`;
             for (let j = 0; j < attrs.length; j++) {
